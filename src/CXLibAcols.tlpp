@@ -1,0 +1,1433 @@
+#INCLUDE "Protheus.ch"
+#INCLUDE "RWMake.ch"
+#INCLUDE "Totvs.ch"
+#INCLUDE "CXAheader.ch"
+#Include "ParmType.ch"
+#Include "CXInclude.ch"
+
+//#############################################################################
+//##+==========+============+=======+==================+======+=============+##
+//##|Programa  | CXLibAcols | Autor | Cirilo Rocha     | Data | 26/03/2020  |##
+//##+==========+============+=======+==================+======+=============+##
+//##|Descr.    | Biblioteca de funções para trabalhar com Grids (aCols e    |##
+//##|          | aHeader)                                                   |##
+//##+==========+==========+=================================================+##
+//##| DATA     | ANALISTA | MANUTENÇÃO EFETUADA                             |##
+//##+==========+==========+=================================================+##
+//##| 26/03/20 | Cirilo R.| Implementada funcao para duplicar linhas        |##
+//##| 14/12/21 | Cirilo R.| Pequena revisão (release 33)                    |##
+//##|          |          |                                                 |##
+//##|          |          |                                                 |##
+//##|          |          |                                                 |##
+//##+==========+==========+=================================================+##
+//#############################################################################
+
+//#############################################################################
+//##+==========+================+=======+===============+======+============+##
+//##|Programa  | CXGetACols     | Autor | Cirilo Rocha  | Data | 09/05/2010 |##
+//##+==========+================+=======+===============+======+============+##
+//##|Descr.    | Função genérica para criar o aHeader e carregar os dados   |##
+//##|          | para o aCols.                                              |##
+//##+==========+============================================================+##
+//##|Parametros| cChave      = Chave de busca no alias, pode usar os campos |##
+//##|          |               da tabela. (opcional)                        |##
+//##|          |               Ex.: FWxFilial('SRC')+SRC->RC_RELATO         |##
+//##|          | cChaveBusca = Chave de busca na tabela carregada.(opcional)|##
+//##|          |               Ex.: SRD->RD_FILAL+SRD->RD_RELATO            |##
+//##+==========+===========+================================================+##
+//##|   DATA   |Programador| Manutenção efetuada                            |##
+//##+==========+===========+================================================+##
+//##| 01/06/11 | Cirilo R. | Correção nos campos do aHeader, pois, não esta-|##
+//##|          |           |  va carregando corretamente a consulta         |##
+//##| 23/07/11 | Cirilo R. | Ajustes na classe tCtrlAlias para usar as fun- |##
+//##|          |           |  ções U_CXGetArea e U_CXRestArea               |##
+//##| 25/07/11 | Cirilo R. | Criada a funcao AddACols                       |##
+//##| 09/08/11 | Cirilo R. | Modificado para usar as funções U_CXFieldPut   |##
+//##|          |           |  e U_CXFieldGet                                |##
+//##|          |           | Desmembrada a função U_CXGetAHeader e adiciona-|##
+//##|          |           |  do tratamento para os campos _ALI_WT e _REC_WT|##
+//##| 03/10/13 | Cirilo R. | Pequena melhoria na função CXAddAcols          |##
+//##| 14/10/13 | Cirilo R. | Pequena correção na função ordena aCols        |##
+//##| 23/10/13 | Cirilo R. | Pequena correção no filtro customizado de car- |##
+//##|          |           |  regar o aCols                                 |##
+//##| 27/11/14 | Cirilo R. | Ajuste para passar o aCols e aHeader como parâ-|##
+//##|          |           |  metro                                         |##
+//##| 19/11/15 | Cirilo R. | Documentação da rotina                         |##
+//##|          |           | Pequena revisão                                |##
+//##| 28/12/17 | Cirilo R. | Feita a proteção das variáveis da função supe- |##
+//##|          |           |  rior                                          |##
+//##| 22/06/22 | Cirilo R. | Pequena otimização para carregar várias vezes  |##
+//##|          |           |  a mesma tabela, aproveitando o mesmo aHeader  |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+==========+===========+================================================+##
+//#############################################################################
+User Function CXGetACols(	cAlias			,; 	//01 Alias do Acols (obrigatorio)
+							nOrdem			,; 	//02 Indice de busca (chave abaixo) (opcional - def 1)
+							cChave			,; 	//03 Chave de busca (pode ser parcial) (obrigatorio)
+							cChaveBusca		,; 	//04 Chave na tabela fisica (baseado no campo acima) (obrigatorio)
+							cFiltro			,; 	//05 Filtros (opcional)
+							uLerCmp			,; 	//06 Carrega apenas estes campos? (opcional) (pode ser String ou Array)
+							uNaoLerCmp		,; 	//07 Campos que nao serao carregados para o aCols (normalmente a chave de relacionamento) (opcional) (pode ser String ou Array)
+							aHeaderPastPar	,; 	//08 aHeader onde serao carregados os dados
+							aColsPastPar	,; 	//09 aCols onde serao carregados os dados
+							lInclui			,; 	//10 Indica se a operacao e' de inclusao (opcional - def variavel INCLUI global)
+							lVazio			,;	//11 Se deve retornar vazio caso nao encontre registros
+							cCpoInc			,; 	//12 Campo com inicializador automatico
+							lInicVar		,;	//13 Usado para nao rodar o ReadVar no SuperMod2, porque ja foi executado antes
+							lCarrAHead		);	//14 Carregar o aHeader (OTIMIZAÇÃO) (def .T.)
+									AS Logical
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local uConteudo         AS Variant	//AS Character,Numeric,Date,Logical	//Campos dicionario
+	Local nTamAHeader       AS Integer
+	Local nCols    			AS Integer
+	Local cAliasTmp			AS Character
+	Local cCpoMap			AS Character
+	Local oArea		  	  	AS Object
+	Local cCampo            AS Character
+	Local nPosDel           AS Integer
+	Local cChvProc          AS Character
+	Local nX                AS Integer
+	
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType  0	VAR cAlias 			AS Character
+	ParamType  1	VAR nOrdem 			AS Numeric			Optional Default 1
+	ParamType  2	VAR cChave       	AS Character		Optional Default "FWxFilial('"+cAlias+"')"
+	ParamType  3	VAR cChaveBusca		AS Character		Optional Default (cAlias)->(IndexKey(nOrdem))
+	ParamType  4	VAR cFiltro 	  	AS Character		Optional Default '.T.'
+	ParamType  5	VAR uLerCmp	  		AS Array,Character	Optional Default {}
+	ParamType  6	VAR uNaoLerCmp  	AS Array,Character	Optional Default {}
+	ParamType  7	VAR aHeaderPastPar	AS Array			Optional Default @aHeader
+	ParamType  8	VAR aColsPastPar	AS Array			Optional Default @aCols
+	ParamType  9	VAR lInclui			AS Logical			Optional Default (Type('INCLUI') == 'L' .And. INCLUI )//Se existir a variavel global usa ela, senao .F.
+	ParamType 10	VAR lVazio			AS Logical			Optional Default .T.
+	ParamType 11	VAR cCpoInc			AS Character		Optional Default ''
+	ParamType 12	VAR lInicVar		AS Logical			Optional Default NIL
+	ParamType 13	VAR lCarrAHead		AS Logical			Optional Default .T.
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	nCols    		:= 0
+	cAliasTmp		:= Iif(Empty(cAlias),'ZZZ',cAlias)
+	oArea		  	:= tCtrlAlias():GetArea({cAlias},.T.,.T.)
+
+	//Limpa/Inicializa arrays
+	aColsPastPar	:= {}
+	
+	//Otimização!
+	If lCarrAHead
+		//Cria aHeader
+		aHeaderPastPar 	:= U_CXGetAHeader(	cAlias		,;
+											uLerCmp		,;
+											uNaoLerCmp	)
+	EndIf
+
+	//Se inclusao o aCols fica vazio---------------------------------------------------------------
+	If lInclui
+
+		aHeader	:= aHeaderPastPar
+		aCols	:= aColsPastPar
+
+	//Preenche aCols-------------------------------------------------------------------------------
+	Else
+
+		If Alias() <> cAlias	//Otimização, se ficar trocando de área tem uma grande perda de performance!
+			dbSelectArea(cAlias) //Precisa selecionar a area para os inicializadores padrao
+		EndIf
+
+		//Cria variaveis no contexto atual, para gerar uma protecao das variaveis da funcao do nivel acima
+		If .Not. ProtegeVar(cAlias)
+			Return .F.
+		EndIf
+
+		//Carrega variaveis para memoria
+		RegToMemory(cAlias, .F. )
+		cChvProc	:= &(cChave)
+
+		(cAlias)->(dbSetOrder(nOrdem))
+		(cAlias)->(MsSeek(cChvProc))
+
+		nTamAHeader := len(aHeaderPastPar)
+		nPosDel		:= GdPosDeleted(aHeaderPastPar)
+		
+		//Otimiza carga da tabela se for grande, quando é pequena o dbAccess ignora
+		If nTamAHeader <= 30
+			cCpoMap	:= ''
+			aEval(aHeaderPastPar,{|x| cCpoMap	+= x[nHDR_CAMPO]+',' },,nTamAHeader-2)	//Os dois últimos campos são especiais
+			cCpoMap	:= U_CXSubStr(cCpoMap,1,-1)
+			TCSrvMap(cAlias,cCpoMap)
+		EndIf
+		
+		While 	(cAlias)->(!Eof()) .And. ;
+				&(cChaveBusca)	== cChvProc
+
+			If .Not. &(cFiltro)
+				(cAlias)->(dbSkip())
+				loop
+			EndIf
+
+			aAdd(aColsPastPar,Array(nTamAHeader+1))
+			nCols ++
+
+			For nX := 1 To nTamAHeader
+				cCampo	:= aHeaderPastPar[nX][nHDR_CAMPO  ]
+				//Campo real
+				If ( aHeaderPastPar[nX][nHDR_CONTEXT ] <> "V") //Verifica se NAO for Virtual
+					//uConteudo	:= U_CXFieldGet(cCampo,cAlias)
+					uConteudo	:= (cAlias)->(FieldGet(FieldPos(cCampo)))
+				//Campos virtuais/especiais
+				Else
+					//Campos especiais
+					If IsHeadAlias(cCampo) //Funcao padrao
+						uConteudo	:= cAliasTmp
+					ElseIf IsHeadRec(cCampo) //Funcao padrao
+						uConteudo	:= (cAlias)->(Recno())
+					//Campo virtual (inicializar)
+					Else
+						uConteudo	:= FwCriaVar(cCampo,.T.)
+					EndIf
+				Endif
+				aColsPastPar[nCols][nX]	:= uConteudo
+			Next nX
+
+			//Marca como NAO deletado
+			aColsPastPar[nCols][nPosDel] := .F.
+
+			(cAlias)->(dbSkip())
+		EndDo
+	EndIf
+
+	//Preenche com pelo menos 1 linha caso esteja vazio
+	If 	len(aColsPastPar) == 0 .And. ;
+		.Not. lVazio
+
+		U_CXAddACols(	cCpoInc			,;	//01
+						@aHeaderPastPar	,;	//02
+						@aColsPastPar	,;	//03
+						lInicVar		 )	//04
+	EndIf
+
+	aHeader	:= aHeaderPastPar
+	aCols	:= aColsPastPar
+
+	//Reseto o TCSrvMap
+	If .Not. Empty(cCpoMap)
+		TCSrvMap(cAlias)
+	EndIf
+
+	oArea:RestArea()		//Restaura area
+	oArea:Destroy()
+	FWFreeVar(oArea)
+
+Return .T.
+
+//#############################################################################
+//##+==========+==============+=======+=================+======+============+##
+//##|Programa  | CXGrvACols   | Autor | Cirilo Rocha    | Data | 09/05/2010 |##
+//##+==========+==============+=======+=================+======+============+##
+//##|Descr.    | Função genérica para gravar os dados carregados do aCols   |##
+//##|          | para a tabela                                              |##
+//##+==========+============================================================+##
+//##|Parametros| aCamposAdic  = Array com outros campos a serem gravados com|##
+//##|          |                outro conteudo.                             |##
+//##|          |                {{'ZRD->ZRD_RELATO','ZRC->ZRC_RELATO'},     |##
+//##|          |                 {'ZRD->ZRD_FILIAL','FWxFilial("ZRC")'}}    |##
+//##|          | cCamposGrava = Campos para serem considerados na gravacao  |##
+//##|          |                se qualquer um estiver preechido grava o    |##
+//##|          |                registro.                                   |##
+//##+==========+===========+================================================+##
+//##|   DATA   |Programador| Manutenção efetuada                            |##
+//##+==========+===========+================================================+##
+//##| 12/06/11 | Cirilo R. | Adicionado tratamento para considerar a grava- |##
+//##|          |           |  ção quando os campos cCamposGrava estiverem   |##
+//##|          |           |  preenchidos                                   |##
+//##| 08/10/13 | Cirilo R. | Ajuste para determinar se houveram alterações  |##
+//##|          |           |  nos dados (lAltera)                           |##
+//##| 27/11/14 | Cirilo R. | Ajuste para passar o aCols e aHeader como parâ-|##
+//##|          |           |  metro                                         |##
+//##| 19/11/15 | Cirilo R. | Documentação da rotina                         |##
+//##|          |           | Pequena revisão                                |##
+//##| 09/12/16 | Cirilo R. | Ajustes na validação de campos obrigatórios    |##
+//##| 28/06/17 | Cirilo R. | Correção na gravação de registros quando não   |##
+//##|          |           |  estão campos obrigatórios preenchidos         |##
+//##| 09/11/22 | Cirilo R. | Adicionada gravação automática do campo filial |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+==========+===========+================================================+##
+//#############################################################################
+User Function CXGrvACols(	cAlias			,; 	//01 Alias do Acols (opcional - Alias do aHeader)
+							lExclui			,; 	//02 Se a operacao e' exclusao (opcional - def .F.)
+							uPar03			,; 	//03 Parametro sem uso
+							uPar04			,; 	//04 Parametro sem uso
+							uCpoAdic		,; 	//05 Campos adicionais que serao gravados (ex.: a chave de relacionamento) (opcional) (pode ser String ou Array)
+							uCpoObrig		,;	//06 Campos para considerar a linha preenchida (opcional - def qualquer campo do aHeader) (pode ser String ou Array)
+							aHeaderPastPar	,; 	//07 aHeader que sera feita a gravacao (opcional - def aHeader privado)
+							aColsPastPar	,; 	//08 aCols que sera feita a gravacao (opcional - def aCols privado)
+							uPar09			); 	//09 Parametro sem uso
+									AS Logical
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local oArea			AS Object
+	Local uRecno		AS Variant //Numeric
+	Local aCpoObrig		AS Array
+	Local aCpoAdic		AS Array
+	Local nTamAHeader	AS Integer
+	Local nPosAlias	    AS Integer
+	Local nPosRecno	    AS Integer
+	Local nX,nY	        AS Integer
+	Local cCampo		AS Character
+	Local cCpoFil		AS Character
+	Local lPreench		AS Logical
+	Local nLastRecno	AS Numeric
+	
+	Private n			AS Numeric
+
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR cAlias			 AS Character			Optional Default NIL
+	ParamType 1		VAR lExclui			 AS Logical				Optional Default .F.
+//	ParamType 2		VAR uPar03			 AS Character			Optional Default
+//	ParamType 3		VAR uPar04			 AS Character			Optional Default
+	ParamType 4		VAR uCpoAdic		 AS Array,Character		Optional Default {}
+	ParamType 5		VAR uCpoObrig		 AS Array,Character		Optional Default {}
+	ParamType 6		VAR aHeaderPastPar	 AS Array				Optional Default @aHeader
+	ParamType 7		VAR aColsPastPar	 AS Array				Optional Default @aCols
+//	ParamType 8		VAR uPar09			 AS Character			Optional Default ''
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	oArea	  	:= tCtrlAlias():GetArea({cAlias},.T.,.T.)
+	nLastRecno	:= 0
+
+	//Variavel de controle se houveram alteracoes nos campos
+	lAlterou	:= .F.
+
+//	If .Not. Empty(uCpoObrig)
+		//Se for caracter sepera em um array
+		If ValType(uCpoObrig) == "C"
+			aCpoObrig	:= StrTokArr2(uCpoObrig,',',.F.)
+
+		//Se for array atribui direto
+		Else
+			aCpoObrig	:= uCpoObrig
+		EndIf
+//	EndIf
+
+//	If .Not. Empty(uCpoAdic)
+		//Se for caracter sepera em um array
+		If ValType(uCpoAdic) == "C"
+			aCpoAdic	:= StrTokArr2(uCpoAdic,',',.F.)
+
+		//Se for array atribui direto
+		Else
+			aCpoAdic	:= uCpoAdic
+		EndIf
+//	EndIf
+
+	//Tratamento de erro
+	If Type('INCLUI') <> 'L' //Existe a variavel global?
+		INCLUI	:= .F.
+	EndIf
+	
+	nTamAHeader		:= Len(aHeaderPastPar)
+	nPosAlias		:= nTamAHeader-1 //Len(aHeader)-1	//_ALI_WT
+	nPosRecno		:= nTamAHeader //Len(aHeader)		//_REC_WT
+//	cCpoInc			:= AllTrim(cCpoInc)
+
+	//Precisa estar aqui apos o nPosAlias
+	Default cAlias	:= aColsPastPar[1][nPosAlias] //campo _ALI_WT
+	
+	cCpoFil		:= FwPrefixoCpo(cAlias)+'_FILIAL'
+	
+	//Se o campo filial não estiver acrescento para forçar a gravação
+	If aScan(aCpoAdic,{|x| x[nHDR_CAMPO] == cCpoFil }) == 0
+		aAdd(aCpoAdic,{cCpoFil,'FWxFilial("'+cAlias+'")'})
+	EndIf
+
+	//Se nao informados os campos considera o aHeader
+	If Len(aCpoObrig) == 0
+		aCpoObrig := {}
+		For nX := 1 to nTamAHeader
+			cCampo	:= aHeaderPastPar[nX][nHDR_CAMPO]
+			//If cCampo <> cCpoInc .And. ; //Nao considera o campo de incremento automatico
+			If	( nTamAHeader >= nHDR_CONTEXT .And. aHeaderPastPar[nX][nHDR_CONTEXT] <> 'V' ) //Contexto real
+
+				aAdd(aCpoObrig,cCampo)
+			EndIf
+		Next
+	EndIf
+
+	//Pre-processa arrays
+	For nX := 1 to len(aCpoAdic)
+		aCpoAdic[nX][1]	:= Upper(AllTrim(aCpoAdic[nX][1]))
+	Next
+
+	For nX := 1 to len(aCpoObrig)
+		aCpoObrig[nX]	:= Upper(AllTrim(aCpoObrig[nX]))
+	Next
+
+	//+-------------+
+	//| Grava Dados |
+	//+-------------+
+	Begin Transaction
+
+		dbSelectArea(cAlias)
+
+		For nX := 1 to len(aColsPastPar)
+
+			n := nX //Tratamento interno
+
+			//Busca os registros carregados do aCols para atualiza-los
+			uRecno := aColsPastPar[nX][nPosRecno]
+			If 	ValType(uRecno) == 'N' .And. ;
+				uRecno > 0 .And. ;
+				.Not. INCLUI
+
+				(cAlias)->(dbGoTo(uRecno))
+				lFound	:= .T.
+			Else
+				lFound	:= .F.
+			EndIf
+
+			//Exclui os itens se operacao exclusao
+			If lExclui
+				If lFound
+					RecLock(cAlias,.F.)
+						(cAlias)->(dbDelete())
+					(cAlias)->(MsUnLock())
+				EndIf
+				lAlterou	:= .T.
+			//Se altera ou inclui
+			Else
+				//Pula registros se campos vazios exceto os campos adicionais
+				lPreench	:= ( len(aCpoObrig) == 0 )
+
+				For nY := 1 to len(aCpoObrig)
+					cCampo	:= aCpoObrig[nY]
+					If .Not. Empty(GdFieldGet(cCampo,nX,,aHeaderPastPar,aColsPastPar)) .And. ;	//Campo vazio
+						Ascan(aCpoAdic,{|x| cCampo $ x[1] }) <= 0   							//Nao consta nos campos Especiais
+
+						lPreench := .T.
+						Exit
+					EndIf
+				Next
+
+				//Se os campos obrigatorios NAO estiverem preenchidos e o registro existir na tabela fica como deletado
+				If 	.Not. lPreench .And. ;
+					uRecno > 0
+					//GdFieldGet(FwPrefixoCpo(cAlias)+'_REC_WT',nX,,aHeaderPastPar,aColsPastPar) <> 0
+
+					aColsPastPar[nX][GdPosDeleted(aHeaderPastPar)]	:= .T.
+				EndIf
+
+				//Se nao deletado no aCols grava na tabela
+				If .Not. GDDeleted(nX,aHeaderPastPar,aColsPastPar)
+
+					If lPreench
+
+						RecLock(cAlias,.Not. lFound)
+							For nY := 1 to nTamAHeader
+								cCampo	:= aHeaderPastPar[nY][nHDR_CAMPO]
+								If GravaCampo(	cAlias	,;
+												cCampo	,;
+												GdFieldGet(cCampo,nX,,aHeaderPastPar,aColsPastPar))
+									lAlterou	:= .T.
+								EndIf
+							Next
+
+						 	//Grava campos adicionais
+							If .Not. Empty(aCpoAdic)
+								For nY := 1 to len(aCpoAdic)
+	//								&(aCpoAdic[nY][1]) := &(aCpoAdic[nY][2])
+
+									//Apenas por questao de compatibilidade
+									cCampo	:= StrTran(aCpoAdic[nY][1],cAlias+'->','')
+
+									If GravaCampo(	cAlias				,;
+													cCampo				,;
+													&(aCpoAdic[nY][2])	)
+										lAlterou	:= .T.
+									EndIf
+
+//									If U_CXFieldPut(cCampo, &(aCpoAdic[nY][2]) ,cAlias )
+//										lAlterou	:= .T.
+//									EndIf
+								Next
+							EndIf
+						(cAlias)->(MsUnLock())
+
+						If .Not. lFound	//Inclusão
+							nLastRecno	:= (cAlias)->(Recno())
+						EndIf
+
+					EndIf
+				//Se deletado e encotrou apaga
+				ElseIf lFound
+					RecLock(cAlias,.F.)
+						(cAlias)->(dbDelete())
+					(cAlias)->(MsUnLock())
+					lAlterou	:= .T.
+				EndIf
+			EndIf
+		Next
+
+	End Transaction
+
+	oArea:RestArea()		//Restaura area
+	oArea:Destroy()
+	FWFreeVar(oArea)
+	
+	//Na inclusão de registros ele deixa posicionado no último registro gravado
+	If 	INCLUI .And. ;
+		nLastRecno > 0
+		
+		(cAlias)->(dbGoTo(nLastRecno))
+	EndIf
+
+Return .T.
+
+//#############################################################################
+//##+==========+===============+=======+================+======+============+##
+//##|Programa  | CXOrdAcols    | Autor | Cirilo Rocha   | Data | 09/05/2010 |##
+//##+==========+===============+=======+================+======+============+##
+//##|Descr.    | Função para ordenação do aCols, ordena apenas campos Carac-|##
+//##|          | ter, Numérico ou Data                                      |##
+//##+==========+============================================================+##
+//##|Parametros| nPosCmp = Posição do campo a ser considerado na ordenação  |##
+//##|          | bBloco  = Bloco de código a ser considerado para ordenar o |##
+//##|          |           array.                                           |##
+//##+==========+===========+================================================+##
+//##|   DATA   |Programador| Manutenção efetuada                            |##
+//##+==========+===========+================================================+##
+//##| 27/11/14 | Cirilo R. | Ajuste para passar o aCols e aHeader como parâ-|##
+//##|          |           |  metro                                         |##
+//##| 03/11/16 | Cirilo R. | Melhoria para aceitar passar o nome do campo   |##
+//##|          |           |  como parâmetro                                |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+==========+===========+================================================+##
+//#############################################################################
+User Function CXOrdAcols(	uPosCmp			,; 	//01 Pode ser a posicao do campo ou o nome do campo (def 1)
+							bBloco			,; 	//02 Bloco de codigo usado para ordenacao (opcional)
+							aHeaderPastPar	,; 	//03 aHeader a ser utilizado (def aHeader)
+							aColsPastPar	)	//04 aCols para ordenacao (def aCol)
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local nDeletado		AS Integer
+	Local nPosCmp		AS Integer
+
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR uPosCmp			AS Numeric,Character	Optional Default 1
+	ParamType 1		VAR bBloco			AS Block				Optional Default NIL
+	ParamType 2		VAR aHeaderPastPar	AS Array				Optional Default @aHeader
+	ParamType 3		VAR aColsPastPar	AS Array				Optional Default @aCols
+
+	//---------------------------------------------------------------------------------------------
+	If ValType(uPosCmp) == 'C'
+		nPosCmp	:= GdFieldPos(uPosCmp,aHeaderPastPar)
+		If nPosCmp <= 0
+			ApMsgStop(	'Erro ao localizar a posição do campo '+uPosCmp+' para ordenar.'+CRLF+;
+						'Informe ao setor de T.I.',U_CXTxtMsg(,,.T.))
+			Return
+		EndIf
+	Else
+		nPosCmp	:= uPosCmp
+	EndIf
+
+	nDeletado := GdPosDeleted(aHeaderPastPar) //len(aHeader)+1
+
+	//If bBloco == NIL
+	If ValType(bBloco) <> 'B'
+		If aHeaderPastPar[nPosCmp][nHDR_TIPO] == 'N'
+			bBloco := { |x,y| iif(x[nDeletado],10000,0)    + x[nPosCmp] <  iif(y[nDeletado],10000,0)    + y[nPosCmp] }
+		ElseIf aHeaderPastPar[nPosCmp][nHDR_TIPO] == 'C'
+			bBloco := { |x,y| iif(y[nDeletado],'ZZZ','  ') + x[nPosCmp] <  iif(y[nDeletado],'ZZZ','  ') + y[nPosCmp] }
+		ElseIf aHeaderPastPar[nPosCmp][nHDR_TIPO] == 'D'
+			bBloco := { |x,y| iif(y[nDeletado],'ZZZ','  ') + DtoS(x[nPosCmp]) < iif(y[nDeletado],'ZZZ','  ') + DtoS(y[nPosCmp]) }
+		EndIf
+	EndIf
+
+	//Order apenas se o campo a ser ordenado e' Caracter, Numerico ou Data
+	If aHeaderPastPar[nPosCmp][nHDR_TIPO] $ 'C*N*D'
+		aSort( aColsPastPar ,,, bBloco )
+	EndIf
+
+Return
+
+//#############################################################################
+//##+==========+==============+=======+=================+======+============+##
+//##|Programa  | CXChvAcols   | Autor | Cirilo Rocha    | Data | 09/05/2010 |##
+//##+==========+==============+=======+=================+======+============+##
+//##|Descr.    | Converte uma chave da tabela em uma chave no aCols. Ex.:   |##
+//##|          | SRD->RD_RELATO  => GdFieldGet('RD_RELATO')                 |##
+//##+==========+===========+================================================+##
+//##|   DATA   |Programador| Manutenção efetuada                            |##
+//##+==========+===========+================================================+##
+//##| 27/11/14 | Cirilo R. | Ajuste para passar o aHeader como parâmetro    |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+==========+===========+================================================+##
+//#############################################################################
+User Function CXChvAcols(	cAlias			,; 	//01 Alias do arquivo (def alias do aHeader)
+							nOrdem			,; 	//02 Ordem do arquivo para obter a chave (def 1)
+							cChave			,;	//03 Chave a ser considerada (def IndexKey)
+							aHeaderPastPar	);	//04 aHeader a ser utilizado (def aHeader)
+									AS Character
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local nX		AS Integer
+
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR cAlias				AS Character
+	ParamType 1		VAR nOrdem			  	AS Numeric			Optional Default 1
+	ParamType 2		VAR cChave				AS Character		Optional Default (cAlias)->(IndexKey(nOrdem))
+	ParamType 3		VAR aHeaderPastPar  	AS Array			Optional Default @aHeader
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	cChave := StrTran(cChave,cChave+'->','')
+
+	For nX := 1 to len(aHeaderPastPar)
+		cChave := StrTran(	cChave		,;
+							RTrim(aHeaderPastPar[nX][nHDR_CAMPO])	,;
+							"GdFieldGet('"+aHeaderPastPar[nX][nHDR_CAMPO]+"')")
+	Next
+
+Return cChave
+
+//#############################################################################
+//##+==========+============+=======+==================+======+=============+##
+//##|Programa  | CXAddACols | Autor | Cirilo Rocha     | Data |  25/07/2011 |##
+//##+==========+============+=======+==================+======+=============+##
+//##|Descr.    | Adiciona uma linha em branco no aCols                      |##
+//##+==========+===========+================================================+##
+//##|   DATA   |Programador| Manutenção efetuada                            |##
+//##+==========+===========+================================================+##
+//##| 12/09/11 | Cirilo R. | Corrigido inicializadores                      |##
+//##| 27/10/14 | Cirilo R. | Ajuste para aceitar aCols e aHeader passado    |##
+//##|          |           |  como parâmetros                               |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+==========+===========+================================================+##
+//#############################################################################
+User Function CXAddACols(	cCpoInc			,;	//01 Campo que tem o incremento automatico
+							aHeaderPastPar	,; 	//02 aHeader onde serao carregados os dados
+							aColsPastPar	,; 	//03 aCols onde serao carregados os dados
+							lInicVar		) 	//04 Usado para nao rodar o ReadVar no SuperMod2, porque ja foi executado antes
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local cAlias			AS Character
+	Local oArea				AS Object
+	Local lIncr				AS Logical
+	Local lIncBak			AS Logical
+	Local nX				AS Integer
+	Local nTamAHeader	    AS Integer
+	Local nCpoInc	        AS Integer
+	Local cCampo			AS Character
+	Local cTipo				AS Character
+	Local lVirtual			AS Logical
+	Local uIncAut			AS Variant //AS Character,Numeric
+	Local uConteudo			AS Variant	//AS Character,Numeric,Date,Logical	//Campos dicionario
+
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR cCpoInc			  	AS Character		Optional Default ''
+	ParamType 1		VAR aHeaderPastPar	  	AS Array			Optional Default @aHeader
+	ParamType 2		VAR aColsPastPar	  	AS Array			Optional Default @aCols
+	ParamType 3		VAR lInicVar		  	AS Logical			Optional Default .T.
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	lIncr		:= .F.
+	lIncBak		:= .T.
+
+	cAlias		:= FwTabPref(aHeaderPastPar[1][nHDR_CAMPO])
+	oArea		:= tCtrlAlias():GetArea({cAlias})
+	cCpoInc		:= AllTrim(cCpoInc)
+	nTamAHeader	:= len(aHeaderPastPar)
+
+	If Type('INCLUI') == 'L' //Existe a variavel global?
+		lIncBak	:= INCLUI
+	EndIf
+
+	//Forco a execucao como se estivesse incluindo um registro
+	INCLUI	:= .T.
+
+	//Posiciona o registro no final da tabela (BOF)
+	(cAlias)->(DbGoBottom())
+	(cAlias)->(dbSkip())
+
+	//Inicializa campo incremental
+	If .Not. Empty(cCpoInc)
+		cCpoInc	:= StrTran(cCpoInc,'+','')
+		nCpoInc	:= GdFieldPos(cCpoInc,aHeaderPastPar)
+		If nCpoInc > 0					//Existe no aHeader
+			//Inicializa a variavel do contator conforme o tipo do dado
+			cTipo	:= aHeaderPastPar[nCpoInc][nHDR_TIPO]
+			If cTipo == 'C'
+				uIncAut := StrZero(0,aHeaderPastPar[nCpoInc][nHDR_TAMANHO])
+				lIncr	:= .T.
+			ElseIf cTipo == 'N'
+				uIncAut	:= 0
+				lIncr	:= .T.
+			Else
+				ApMsgAlert(	'Tipo de dado ('+cTipo+') do campo '+cCpoInc+' inválido para auto-incremento.'+CRLF+;
+							'Informe ao setor de T.I.',U_CXTxtMsg(,,.T.))
+			EndIf
+
+			//Busca o ultimo numero da sequencia
+			If lIncr
+
+				For nX := 1 to len(aColsPastPar)
+					If uIncAut  < GdFieldGet(cCpoInc,nX,.F., aHeaderPastPar, aColsPastPar)
+						uIncAut := GdFieldGet(cCpoInc,nX,.F., aHeaderPastPar, aColsPastPar)
+					EndIf
+				Next
+
+				If ValType(uIncAut) == 'C'
+					uIncAut	:= Soma1(uIncAut)
+				ElseIf ValType(uIncAut) == 'N'
+					uIncAut++
+				EndIf
+
+			EndIf
+		Else
+			ApMsgAlert(	'Campo '+cCpoInc+' incremental não encontrado.'+CRLF+;
+						'Informe ao setor de T.I.',U_CXTxtMsg(,,.T.))
+		EndIf
+	EndIf
+
+	//Adiciona linha no aCols
+	aAdd(aColsPastPar, Array(nTamAHeader + 1))
+
+	//Reposiciona o acols
+	n := len(aColsPastPar)
+
+	//Seta como nao excluido
+	aColsPastPar[n][GdPosDeleted(aHeaderPastPar)] 	:= .F.
+
+	//Carrega variaveis para a memoria
+	If lInicVar
+		RegToMemory(cAlias, .F. )
+	EndIf
+
+	//Inicializa os demais campos do aHeader
+	For nX := 1 To nTamAHeader
+
+		cCampo	:= AllTrim(aHeaderPastPar[nX][nHDR_CAMPO])
+
+		//Campos padrao
+		If IsHeadAlias(cCampo) 		//_ALI_WT $ aHeaderPastPar[nX][nHDR_CAMPO]
+			uConteudo		:= cAlias
+		ElseIf IsHeadRec(cCampo) 	//_REC_WT
+			uConteudo		:= 0
+		ElseIf (lIncr .And. cCampo == cCpoInc) //Campo de incremento automatico
+			uConteudo		:= uIncAut
+		Else
+			lVirtual		:= ( (cAlias)->(FieldPos(cCampo)) == 0 )
+			uConteudo		:= FwCriaVar(cCampo, (lVirtual .Or. lInicVar) )
+			&('M->'+cCampo)	:= uConteudo		//Alimento o campo para usar nos inicializadores
+		EndIf
+
+		GdFieldPut(cCampo,uConteudo,n,aHeaderPastPar,aColsPastPar)
+
+	Next
+
+	//Preenche campo incremental
+//	If lIncr
+
+//		If Empty(GdFieldGet(cCpoInc,n,.F.,aHeaderPastPar ,aColsPastPar)) 		//Nao foi inicializado?
+//			GdFieldPut(cCpoInc,xCont,n,aHeaderPastPar,aColsPastPar)
+//		EndIf
+
+//	EndIf
+
+	INCLUI	:= lIncBak //Restaura variavel global
+	oArea:RestArea()		//Restaura area
+	oArea:Destroy()
+	FWFreeVar(oArea)
+
+Return
+
+//#############################################################################
+//##+==========+==============+=======+=================+======+============+##
+//##|Programa  | CXGetAHeader | Autor | Cirilo Rocha    | Data |   /  /     |##
+//##+==========+==============+=======+=================+======+============+##
+//##|Descr.    | Função para carregar o aHeader                             |##
+//##+==========+===========+================================================+##
+//##|   DATA   |Programador| Manutenção efetuada                            |##
+//##+==========+===========+================================================+##
+//##| 19/11/15 | Cirilo R. | Documentação da rotina                         |##
+//##|          |           | Pequena revisão                                |##
+//##| 06/12/22 | Cirilo R. | Grande otimização no fonte                     |##
+//##|          |           | - 47000ms antes                                |##
+//##|          |           | -  7000ms usando funções MVC                   |##
+//##|          |           | -  4000ms com query no SX3                     |##
+//##|          |           | -  3000ms diretamente no SX3 (otimizado)       |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+==========+===========+================================================+##
+//#############################################################################
+User Function CXGetAHeader(	cAlias		,; 	//01 Alias a ser pesquisado (Def ler apenas os campos abaixo)
+							uLerCmp		,; 	//02 Campos que deverao ser lidos (def todos) (pode ser string ou array)
+							uNaoLerCmp	);	//03 Campos que NAO devem ser carregados (def {}) (pode ser string ou array)
+								AS Array	//(geralmente a chave de relacionamento do acols)
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local aNaoLerCmp	AS Array
+	Local oArea			AS Object
+	Local aHeader 		AS Array
+	Local aLerCmp		AS Array
+//	Local cPref			AS Character
+	Local nX			AS Integer
+	Local cCampo		AS Character
+	
+	Private cObrigat	AS Character
+	
+	//Otimização para leitura do SX3
+	Private nARQUIVO	AS Integer
+	Private nCAMPO		AS Integer
+	Private nPICTURE	AS Integer
+	Private nTAMANHO	AS Integer
+	Private nDECIMAL	AS Integer
+	Private nUSADO	    AS Integer
+	Private nVALID	    AS Integer
+	Private nTIPO	    AS Integer
+	Private nF3	        AS Integer
+	Private nCONTEXT	AS Integer
+	Private nRELACAO	AS Integer
+	Private nWHEN	    AS Integer
+	Private nVISUAL	    AS Integer
+	Private nVLDUSER	AS Integer
+	Private nNIVEL		AS Integer
+
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR cAlias		  		AS Character				Optional Default ''
+	ParamType 1		VAR uLerCmp		 	  	AS Array,Character			Optional Default {}
+	ParamType 2		VAR uNaoLerCmp			AS Array,Character			Optional Default {}
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	oArea		:= tCtrlAlias():GetArea({'SX3'},.T.,.T.)
+	aHeader 	:= {}
+	aLerCmp		:= {}
+	aNaoLerCmp	:= {}
+	cObrigat	:= StrTran(X3ObrigatSQL(),' OR ','.OR.')
+
+	If .Not. Empty(uLerCmp)
+		//Se for caracter sepera em um array
+		If ValType(uLerCmp) == "C"
+			aLerCmp	:= StrTokArr2(uLerCmp,',',.F.)
+
+			//Pre-Processa array
+			For nX := 1 to len(aLerCmp)
+				aLerCmp[nX]	:= AllTrim(aLerCmp[nX])
+			Next
+		//Se for array atribui direto
+		Else
+			aLerCmp	:= uLerCmp
+		EndIf
+	EndIf
+
+	If .Not. Empty(uNaoLerCmp)
+		//Se for caracter sepera em um array
+		If ValType(uNaoLerCmp) == "C"
+			aNaoLerCmp	:= StrTokArr2(uNaoLerCmp,',',.F.)
+
+			//Pre-Processa array
+			For nX := 1 to len(aNaoLerCmp)
+				aNaoLerCmp[nX]	:= AllTrim(aNaoLerCmp[nX])
+			Next
+		//Se for array atribui direto
+		Else
+			aNaoLerCmp	:= uNaoLerCmp
+		EndIf
+	EndIf
+
+	//Limita campos de retorno do dbSeek!
+	TCSrvMap( 'SX3','X3_ARQUIVO,X3_CAMPO,X3_NIVEL,X3_VALID,X3_PICTURE,X3_DECIMAL,'+;
+					'X3_USADO,X3_F3,X3_WHEN,X3_VISUAL,X3_VLDUSER,'+;
+					'X3_RELACAO,X3_TIPO,X3_TAMANHO,X3_CONTEXT,'+;	//FwCriaVar()
+					'X3_OBRIGAT,X3_RESERV,'+;						//X3Obrigat()
+					'X3_CBOX,X3_CBOXSPA,X3_CBOXENG,'+;				//X3Cbox()
+					'X3_DESCRIC,X3_DESCSPA,X3_DESCENG,'+;			//X3Descric()
+					'X3_TITULO,X3_TITSPA,X3_TITENG')				//X3Titulo()
+
+	//Otimização no processo de leitura do SX3
+	nARQUIVO	:= SX3->(FieldPos('X3_ARQUIVO'))
+	nCAMPO		:= SX3->(FieldPos('X3_CAMPO'))	
+	nPICTURE	:= SX3->(FieldPos('X3_PICTURE'))
+	nTAMANHO	:= SX3->(FieldPos('X3_TAMANHO'))
+	nDECIMAL	:= SX3->(FieldPos('X3_DECIMAL'))
+	nUSADO	    := SX3->(FieldPos('X3_USADO'))	
+	nVALID	    := SX3->(FieldPos('X3_VALID'))	
+	nTIPO	    := SX3->(FieldPos('X3_TIPO'))	
+	nF3	        := SX3->(FieldPos('X3_F3'))		
+	nCONTEXT	:= SX3->(FieldPos('X3_CONTEXT'))
+	nRELACAO	:= SX3->(FieldPos('X3_RELACAO'))
+	nWHEN	    := SX3->(FieldPos('X3_WHEN'))	
+	nVISUAL	    := SX3->(FieldPos('X3_VISUAL'))	
+	nVLDUSER	:= SX3->(FieldPos('X3_VLDUSER'))
+	nNIVEL		:= SX3->(FieldPos('X3_NIVEL'))	
+
+	If .Not. Empty(cAlias) .And. ;
+		( ValType(aLerCmp) <> 'A' .Or. Len(aLerCmp) == 0 )
+		
+		SX3->(dbSetOrder(1))
+		SX3->(MsSeek(cAlias))
+
+		While 	SX3->(!Eof()) .And. ;
+				SX3->(FieldGet(nARQUIVO)) == cAlias
+
+			cCampo	:= RTrim(SX3->(FieldGet(nCAMPO)))
+
+			If 	X3Uso(SX3->(FieldGet(nUSADO))) 		.And. ;
+				cNivel >= SX3->(FieldGet(nNIVEL)) 	.And. ;
+			  	aScan(aNaoLerCmp,cCampo) == 0	 		//Nao deve carregar
+
+				AddHeader(	cCampo	,;
+							aHeader	)
+			Endif
+
+			SX3->(dbSkip())
+		EndDo
+
+	Else
+		SX3->(dbSetOrder(2)) //X3_CAMPO
+		For nX := 1 to len(aLerCmp)
+			If SX3->(MsSeek(aLerCmp[nX]))
+
+				AddHeader(	aLerCmp[nX],;
+							aHeader		)
+			Else
+				ApMsgStop(	'Não foi possível localizar o campo '+aLerCmp[nX]+' no dicionário (SX3).'+CRLF+;
+							'INFORME AO SETOR DE T.I.',U_CXTxtMsg(,,.T.))
+			Endif
+		Next
+	EndIf
+
+	TCSrvMap('SX3')	//Restauro os campos limitados
+	
+/*	//Campos _ALI_WT e _REC_WT
+	If Empty(cAlias)
+		cPref 	:= 'ZZZ'
+		cAlias	:= 'ZZZ'
+	Else
+		cPref := FwPrefixoCpo(cAlias)
+	EndIf
+*/
+
+	//Adiciona colunas padrao _ALI_WT e _REC_WT
+	GetWTColumns(@aHeader,cAlias)
+
+	oArea:RestArea()		//Restaura area
+	oArea:Destroy()
+	FWFreeVar(oArea)
+
+Return aHeader
+
+//-------------------------------------------------------------------------------------------------
+Static Function	AddHeader(	cCampo		AS Character,;
+							aHeader		AS Array 	)
+	
+	//Declaração de Variáveis----------------------------------------------------------------------
+	Local cVldCpo		AS Character
+	Local cDescric		AS Character
+	Local nTamAHd		AS Integer
+	Local lObrigat		AS Logical
+	
+	//---------------------------------------------------------------------------------------------
+//	cVldCpo	:= ''
+//	If .Not. Empty(SX3->X3_VALID)
+//		cVldCpo += RTrim(SX3->X3_VALID)
+//	EndIf
+
+// 	Nao ha necessidade de acrescentar essa validacao
+//	If .Not. Empty(SX3->X3_VLDUSER)
+//		If .Not. Empty(cVldCpo)
+//			cVldCpo += ' .And. '
+//		EndIf
+//		cVldCpo += RTrim(SX3->X3_VLDUSER)
+//	EndIf
+	cVldCpo	:= RTrim(SX3->(FieldGet(nVALID)))
+
+	//+-------------------------------------------------+
+	//| Estrutura aHeader                               |
+	//|                                                 |
+	//| 1 - (C12)  Titulo                               |
+	//| 2 - (C10)  Campo                                |
+	//| 3 - (C45)  Picture                              |
+	//| 4 - (N)    Tamanho                              |
+	//| 5 - (N)    Decimal                              |
+	//| 6 - (C128) Validacao                            |
+	//| 7 - (C15)  Usado                                |
+	//| 8 - (C01)  Tipo (C/N/D/L/M)                     |
+	//| 9 - (C06)  Consulta (F3)                        |
+	//|10 - (C01)  Contexto (R/V)                       |
+	//|11 - (C128) Combo (S=SIM;N=NAO)                  |
+	//|12 - (C128) Inicializador padrao (formato string)|
+	//|n+1 - Deletado(L)                                |
+	//+-------------------------------------------------+
+
+	//Baseado no fonte padrao RHLIBGD
+//	lObrigat := (SubStr(Bin2Str(SX3->X3_OBRIGAT),1,1) == "x") .or. VerByte(SX3->X3_RESERV,7)
+	//lObrigat := X3Obrigat(cCampo)
+	lObrigat := SX3->(&(cObrigat))
+
+	aAdd(aHeader,Array(nHDR_TAMAHD))
+	nTamAHd	:= Len(aHeader)
+
+	cDescric	:= RTrim(X3Descric())
+	If SX3->(FieldGet(nTAMANHO)) >= Len(cDescric)
+/*01*/aHeader[nTamAHd][nHDR_TITULO ]:= cDescric	//Pequena melhoria, se o campo for grande mostra a descrição completa
+	Else
+/*01*/aHeader[nTamAHd][nHDR_TITULO ]:= RTrim(X3Titulo())
+	EndIf
+/*02*/aHeader[nTamAHd][nHDR_CAMPO  ]:= cCampo
+/*03*/aHeader[nTamAHd][nHDR_PICTURE]:= RTrim(SX3->(FieldGet(nPICTURE)))
+/*04*/aHeader[nTamAHd][nHDR_TAMANHO]:= SX3->(FieldGet(nTAMANHO))
+/*05*/aHeader[nTamAHd][nHDR_DECIMAL]:= SX3->(FieldGet(nDECIMAL))
+/*06*/aHeader[nTamAHd][nHDR_VALID  ]:= cVldCpo
+/*07*/aHeader[nTamAHd][nHDR_USADO  ]:= SX3->(FieldGet(nUSADO))
+/*08*/aHeader[nTamAHd][nHDR_TIPO   ]:= SX3->(FieldGet(nTIPO))
+/*09*/aHeader[nTamAHd][nHDR_F3     ]:= RTrim(SX3->(FieldGet(nF3)))
+/*10*/aHeader[nTamAHd][nHDR_CONTEXT]:= SX3->(FieldGet(nCONTEXT))
+//	If Left(SX3->X3_CBOX,1) == '#' //Excutando funcao
+//		aHeader[nTamAHd][nHDR_CBOX	]	:= &(SubStr(SX3->X3_CBOX,2))
+//	Else
+//		aHeader[nTamAHd][nHDR_CBOX	]	:= SX3->X3_CBOX
+//	EndIf
+/*11*/aHeader[nTamAHd][nHDR_CBOX]	:= RTrim(X3Cbox())
+/*12*/aHeader[nTamAHd][nHDR_RELACAO]:= RTrim(SX3->(FieldGet(nRELACAO)))
+/*13*/aHeader[nTamAHd][nHDR_WHEN  ]	:= RTrim(SX3->(FieldGet(nWHEN)))
+/*14*/aHeader[nTamAHd][nHDR_VISUAL]	:= SX3->(FieldGet(nVISUAL))
+/*15*/aHeader[nTamAHd][nHDR_VLDUSR]	:= RTrim(SX3->(FieldGet(nVLDUSER)))
+/*16*/aHeader[nTamAHd][nHDR_RES16 ]	:= ""
+/*17*/aHeader[nTamAHd][nHDR_RES17 ]	:= lObrigat
+
+	//Visto que o parametro 16 dava erro caso fosse carregado com o X3_OBRIGAT
+//	If SubStr(Bin2Str(SX3->X3_OBRIGAT),1,1) == "x"
+//		aHeader[nTamAHd][nHDR_RES16 ]	:= SX3->X3_OBRIGAT
+//	Else
+//		aHeader[nTamAHd][nHDR_RES16 ]	:= ""
+//	EndIf
+//	aHeader[nTamAHd][nHDR_RES17 ]		:= .Not. Empty(aHeader[nTamAHd][nHDR_RES16 ]) //Obrigatorio?
+
+Return
+
+//#############################################################################
+//##+==========+===================+=======+==============+======+==========+##
+//##|Programa  | GetWTColumns      | Autor | Cirilo Rocha | Data | 06/12/22 |##
+//##+==========+===================+=======+==============+======+==========+##
+//##|Descr.    | Função para adicionar as colunas _ALI_WT e _REC_WT         |##
+//##+==========+===========+================================================+##
+//##|   DATA   |Programador| Manutenção efetuada                            |##
+//##+==========+===========+================================================+##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+==========+===========+================================================+##
+//#############################################################################
+Static aCacheAliWT	:= NIL		AS Array
+Static aCacheRecWT	:= NIL		AS Array
+//-------------------------------------------------------------------------------------------------
+Static Function GetWTColumns(	aHeader	,;	//01
+								cAlias	)	//02
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local nPos		AS Integer
+	Local aTemp		AS Array
+
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR aHeader  	  		AS Array
+	ParamType 1		VAR cAlias		  	  	AS Character
+
+	If ValType(aCacheAliWT) <> 'A'
+		aTemp	:= {}
+		//Adiciona campos padrao _ALI_WT e _REC_WT
+		AdHeadRec('RAZ',@aTemp) //Funcao padrao
+
+		//-------------------------------------------------------------------------------------------//
+		// Redimensiona as colunas _ALI_WT e _REC_WT que no padrão vem com o tamanho errado,         //
+		//  baseado no fonte padrão RHLIBGD                                                          //
+		//-------------------------------------------------------------------------------------------//
+
+		//Campo do alias para gravacao
+		nPos	:= aScan(aTemp , { |aColumns| IsHeadAlias(aColumns[nHDR_CAMPO]) } )
+		If nPos > 0
+			ASize(aTemp[nPos], nHDR_TAMAHD)
+			aTemp[nPos, nHDR_CBOX	] := ""
+			aTemp[nPos, nHDR_WHEN	] := ""
+			aTemp[nPos, nHDR_VISUAL	] := "V"
+			aTemp[nPos, nHDR_VLDUSR	] := ""
+			aTemp[nPos, nHDR_RES16	] := ""
+			aTemp[nPos, nHDR_RES17	] := .F.
+
+			aCacheAliWT	:= aTemp[nPos]
+		EndIf
+
+		//Recno do campo para gravacao
+		nPos	:= aScan(aTemp , { |aColumns| IsHeadRec(aColumns[nHDR_CAMPO]) } )
+		If nPos > 0
+			ASize(aTemp[nPos], nHDR_TAMAHD)
+			aTemp[nPos, nHDR_CBOX	] := ""
+			aTemp[nPos, nHDR_WHEN	] := ""
+			aTemp[nPos, nHDR_VISUAL	] := "V"
+			aTemp[nPos, nHDR_VLDUSR	] := ""
+			aTemp[nPos, nHDR_RES16	] := ""
+			aTemp[nPos, nHDR_RES17	] := .F.
+			
+			aCacheRecWT	:= aTemp[nPos]
+		EndIf
+
+	EndIf
+	
+	//Campo do alias para gravacao
+	aAdd(aHeader,aClone(aCacheAliWT))
+	nPos	:= Len(aHeader)
+	aHeader[nPos, nHDR_CAMPO	]	:= FwPrefixoCpo(cAlias)+SubStr(aHeader[nPos,nHDR_CAMPO],4)
+	aHeader[nPos, nHDR_F3		]	:= cAlias
+	aHeader[nPos, nHDR_RELACAO	]	:= "'"+cAlias+"'" //Alterado
+
+	//Recno do campo para gravacao
+	aAdd(aHeader,aClone(aCacheRecWT))
+	nPos	:= Len(aHeader)
+	aHeader[nPos, nHDR_CAMPO	]	:= FwPrefixoCpo(cAlias)+SubStr(aHeader[nPos,nHDR_CAMPO],4)
+	aHeader[nPos, nHDR_F3		]	:= cAlias
+	aHeader[nPos, nHDR_RELACAO	]	:= "0" //Alterado
+
+Return
+
+//#############################################################################
+//##+==========+=================+=======+==============+======+============+##
+//##|Programa  | GravaCampo      | Autor | Cirilo Rocha | Data | 14/10/2014 |##
+//##+==========+=================+=======+==============+======+============+##
+//##|Descr.    | Função para gravar um campo na tabela a partir do aHeader  |##
+//##+==========+===========+================================================+##
+//##|   DATA   |Programador| Manutenção efetuada                            |##
+//##+==========+===========+================================================+##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+==========+===========+================================================+##
+//#############################################################################
+Static Function GravaCampo(	cAlias		,;	//01
+							cCampo		,;	//02
+							uConteudo 	);	//03
+								AS Logical
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local lAlterou		AS Logical
+
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR cAlias		  		AS Character
+	ParamType 1		VAR cCampo		 	  	AS Character
+	ParamType 2		VAR uConteudo 			AS Character,Numeric,Date,Logical	//Campos dicionario
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	lAlterou	:= .F.
+
+	If 	.Not. IsHeadAlias(cCampo) .And. ;
+		.Not. IsHeadRec(cCampo)   .And. ;
+		(cAlias)->(FieldPos(cCampo)) > 0 //O campo existe na tabela para ser gravado?
+
+		//Houve alteracoes nos campos?
+		If U_CXFieldPut(cCampo, uConteudo,cAlias )
+			lAlterou	:= .T.
+		EndIf
+	EndIf
+
+Return lAlterou
+
+//#############################################################################
+//##+==========+=================+=======+==============+======+============+##
+//##|Programa  | CXVlDpMAba      | Autor | Cirilo Rocha | Data | 07/07/2017 |##
+//##+==========+=================+=======+==============+======+============+##
+//##|Descr.    | Função utilizada como validação do linha ok do ModeloAba   |##
+//##+==========+===========+================================================+##
+//##|   DATA   |Programador| Manutenção efetuada                            |##
+//##+==========+===========+================================================+##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+==========+===========+================================================+##
+//#############################################################################
+User Function CXVlDpMAba(	oBrw	,;	//01
+							aCposVld);	//02
+								AS Logical
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local lRet			AS Logical
+	Local cMsgErro		AS Character
+
+	//Variaveis protegidas dentro da funcao, para nao gerar conflito com as outras variaveis
+	Private n			AS Numeric
+	Private aCols		AS Array
+	Private aHeader		AS Array
+
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR oBrw  	  		AS Object
+	ParamType 1		VAR aCposVld  	  	AS Array
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	n			:= oBrw:nAt
+	aCols		:= oBrw:oMother:aCols
+	aHeader		:= oBrw:oMother:aHeader
+
+	cMsgErro	:= 	U_CXTxtMsg()+'Aba '+oBrw:oMother:oWnd:cTitle+CRLF+;
+					'O item da linha '+StrZero(n,3)+;
+					' já foi informado anteriormente.'
+
+	lRet	:= U_CXVldDupl(	aCposVld,;
+							n		,;
+							cMsgErro,;
+							aHeader	,;
+							aCols	)
+
+Return lRet
+
+//#############################################################################
+//##+==========+=================+=======+==============+======+============+##
+//##|Programa  | CXVldDupl       | Autor | Cirilo Rocha | Data | 26/11/2015 |##
+//##+==========+=================+=======+==============+======+============+##
+//##|Descr.    | Função para validar uma chave duplicada no aCols           |##
+//##|          |                                                            |##
+//##|          | Para ser usada dentro do linhaOK de uma Grid               |##
+//##|          | LEMBRAR DE VERIFICAR SE ALINHA ESTA PREENCHIDA ANTES       |##
+//##+==========+===========+================================================+##
+//##|   DATA   |Programador| Manutenção efetuada                            |##
+//##+==========+===========+================================================+##
+//##| 01/03/18 | Cirilo R. | Pequena melhoria no parâmetro dos campos       |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+==========+===========+================================================+##
+//#############################################################################
+User Function CXVldDupl(uCposVld		,;	//01 uCposVld
+						nAtual			,;	//02 nAtual
+						cMsgErro		,;	//03 cMsgErrO
+						aHeaderPastPar	,;	//04 aHeaderPastPar
+						aColsPastPar	);	//05 aColsPastPar
+								AS Logical
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local lRet			AS Logical
+	Local aPosCpo		AS Array
+	Local aChvAtu	    AS Array
+	Local nX,nY			AS Integer
+	Local lIgual		AS Logical
+	Local aCposVld		AS Array
+
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR uCposVld		AS Array,Character
+	ParamType 1		VAR nAtual			AS Numeric			Optional Default n
+	ParamType 2		VAR cMsgErro		AS Character		Optional Default U_CXTxtMsg()+'O item da linha '+StrZero(nAtual,3)+' já informado anteriormente.'
+	ParamType 3		VAR aHeaderPastPar	AS Array			Optional Default @aHeader
+	ParamType 4		VAR aColsPastPar	AS Array			Optional Default @aCols
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	lRet	:= .T.
+	aPosCpo	:= {}
+
+	If ValType(uCposVld) == 'C'
+		aCposVld	:= StrTokArr2(uCposVld,',')
+	Else
+		aCposVld	:= uCposVld
+	EndIf
+
+	//Busca posicoes dos campos (otimizacao)
+	For nX := 1 to len(aCposVld)
+		aAdd(aPosCpo,GDFieldPos(aCposVld[nX],aHeaderPastPar))
+	Next
+
+	//Valida item
+	If .Not. GDDeleted(nAtual,aHeaderPastPar,aColsPastPar)
+
+		//Chave atual
+		aChvAtu	:= {}
+		aEval(aPosCpo,{|x| aAdd(aChvAtu,aColsPastPar[nAtual][x]) }) //Guarda chave da linha
+
+		For nX := 1 to len(aColsPastPar)
+			If nX <> nAtual .And. ;
+				.Not. GDDeleted(nX,aHeaderPastPar,aColsPastPar)
+
+				lIgual	:= .T.
+				For nY := 1 to len(aPosCpo)
+					If .Not. ( aColsPastPar[nX][ aPosCpo[nY] ] == aChvAtu[nY] )
+						lIgual	:= .F.
+						Exit
+					EndIf
+				Next
+
+				If lIgual
+					ApMsgAlert(cMsgErro,U_CXTxtMsg(,,.T.))
+					lRet	:= .F.
+					Exit
+				EndIf
+
+			EndIf
+		Next
+
+	EndIf
+
+Return lRet
+
+//-------------------------------------------------------------------------------------------------
+//Feita desta forma porque a funcao padrao SetPrvt nao estava fazendo como eu precisava
+//-------------------------------------------------------------------------------------------------
+Static Function ProtegeVar(cAlias);	//01
+								AS Logical
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local aCampos	AS Array
+	Local nX		AS Numeric
+
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR cAlias  	  		AS Character
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	aCampos	:= U_CXGetSX3(	/*aCampos*/		,;	//01 Campos para selecao
+							cAlias			,;	//02 Tabela para filtro
+							/*cFiltro*/		,;	//03 Filtro customizado (def .T.)
+							.T.				,;	//04 Traz campos somente leitura (def .F.)
+							/*lReal*/		,;	//05 Traz apenas campos reais (def .F.)
+							/*cFltNv*/		,;	//06 Nivel de campo para filtro (def cNivel)
+							.T.				,;	//07 Retorna somente o campo no array (def .F.)
+							/*aNaoLerCmp*/	)	//08 Campos que não devem ser lidos (def {})
+	
+	If Len(aCampos) == 0
+		ApMsgAlert('ERRO ao localizar tabela '+cAlias+' no dicionário de dados (SX3).',U_CXTxtMsg(,,.T.))
+		Return .F.
+	EndIf
+
+	For nX := 1 to Len(aCampos)
+		_SetOwnerPrvt(aCampos[nX],NIL) //Criar variaveis privadas
+	Next
+
+Return .T.
+
+//#############################################################################
+//##+==========+===========+=======+===================+======+=============+##
+//##|Programa  | CXNaoRept | Autor | Cirilo Rocha      | Data | 08/04/2014  |##
+//##+==========+===========+=======+===================+======+=============+##
+//##|Descr.    | Função para validar a não repetição de itens no aCols      |##
+//##+==========+===========+================================================+##
+//##|   DATA   |Programador| Manutenção Efetuada                            |##
+//##+==========+===========+================================================+##
+//##| 25/01/18 | Cirilo R. | Migrado do fonte CXNaoRept                     |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+==========+===========+================================================+##
+//#############################################################################
+User Function CXNaoRept(uCampos);	//01
+							AS Logical
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local lRet			AS Logical
+	Local aCposVld		AS Array
+
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR uCampos  	  		AS Array,Character				Optional Default NIL
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+
+	//Se nao informado pula
+	If 	ValType(uCampos) == 'U' .Or. ;
+		Empty(uCampos)
+
+		Return lRet
+	EndIf
+
+	If ValType(uCampos) == 'A'
+		aCposVld	:= uCampos
+	Else
+		aCposVld	:= StrTokArr2(uCampos,',')
+	EndIf
+
+	lRet	:= U_CXVldDupl(	aCposVld			,;	//01
+							/*nAtual*/			,;	//02
+							/*cMsgErro*/		,;	//03
+							/*aHeaderPastPar*/	,;	//04
+							/*aColsPastPar*/	)	//05
+
+Return lRet
+
+//#############################################################################
+//##+----------+--------------+-------+-------------------+------+----------+##
+//##|Programa  | RCDuplica    | Autor | Cirilo Rocha      | Data |01/12/2010|##
+//##+----------+--------------+-------+-------------------+------+----------+##
+//##|Descr.    | Função para duplicar uma linha do aCols                    |##
+//##+==========+===========+================================================+##
+//##|   DATA   |Programador| Manutenção Efetuada                            |##
+//##+==========+===========+================================================+##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+==========+===========+================================================+##
+//#############################################################################
+User Function CXLA_DplLin(	aHeaderPastPar	,;	//01
+							aColsPastPar    ,;	//02
+							cCpoInc         ,;	//03
+							uCpoObr         ,;	//04
+							nPos			,;	//05
+							lInicVar        );	//06
+									AS Logical
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local nX			AS Integer
+	Local aCpoObr		AS Array
+	Local lPreench		AS Logical
+	
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR aHeaderPastPar	AS Array				Optional Default aHeader
+	ParamType 1		VAR aColsPastPar	AS Array				Optional Default aCols
+	ParamType 2		VAR cCpoInc			AS Character			Optional Default ''
+	ParamType 3		VAR uCpoObr			AS Array,Character		Optional Default {}
+	ParamType 4		VAR nPos			AS Numeric				Optional Default n
+	ParamType 5		VAR lInicVar		AS Logical				Optional Default NIL
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	If ValType(uCpoObr) == "C"
+		aCpoObr	:= StrTokArr2(uCpoObr,',')
+	//Se for array atribui direto
+	Else
+		aCpoObr	:= uCpoObr
+	EndIf
+	
+	//Variaveis compartilhadas de mensagens de erro
+	cMsgErr		:= IIf(Type('cMsgErr')<>'C','',cMsgErr)
+	cCodErr		:= IIf(Type('cCodErr')<>'C','',cCodErr)
+	cSoluc		:= IIf(Type('cSoluc')<>'C','',cSoluc)
+	cMsg		:= IIf(Type('cMsg')<>'C','',cMsg)
+
+	//---------------------------------------------------------------------------------------------
+	lPreench	:= .T.
+	For nX := 1 to len(aCpoObr)
+		If 	Empty(GdFieldGet(aCpoObr[nX],nPos,,aHeaderPastPar,aColsPastPar)) .And. ;	//Campo vazio
+			.Not. (aCpoObr[nX] $ cCpoInc)												//Nao consta nos campos Especiais
+
+			lPreench := .F.
+			Exit
+		EndIf
+	Next
+
+	If .Not. lPreench
+		U_CXMsgErro('A linha atual não pode ser duplicada por falta do preenchimento de campos obrigatórios.',;
+					'INFORME OS CAMPOS OBRIGATÓRIOS ANTES DE DUPLICAR A LINHA.',/*lMsg*/,/*oArea*/)
+		Return .F.
+	EndIf
+
+	U_CXAddACols(	cCpoInc			,;	//01 Campo que tem o incremento automatico
+					aHeaderPastPar	,; 	//02 aHeader onde serao carregados os dados
+					aColsPastPar	,; 	//03 aCols onde serao carregados os dados
+					lInicVar		) 	//04 Usado para nao rodar o ReadVar no SuperMod2, porque ja foi executado antes
+	n 	  	:= Len(aColsPastPar)
+	
+	//duplica item
+	For nX := 1 to (Len(aColsPastPar[nPos])-1)
+		//Pula campos especiais
+		If 	.Not. IsHeadAlias(aHeaderPastPar[nX][nHDR_CAMPO]) .And. ; 		//_ALI_WT
+			.Not. IsHeadRec(aHeaderPastPar[nX][nHDR_CAMPO]) 				//_REC_WT
+			
+			aColsPastPar[n][nX]	:= aColsPastPar[nPos][nX]
+		EndIf
+	Next	
+
+Return .T.

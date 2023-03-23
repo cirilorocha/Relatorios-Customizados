@@ -1,0 +1,408 @@
+#INCLUDE "Protheus.ch"
+#INCLUDE "RWMake.ch"
+#INCLUDE "MSObject.ch"
+#Include "ParmType.ch"
+#INCLUDE "CXnOpc.ch"
+#INCLUDE "CXInclude.ch"
+
+//###############################################################################
+//##+============+==========+=======+====================+======+=============+##
+//##|Programa    |TModeloAba| Autor | Ted Wagner         | Data | 27/10/2009  |##
+//##+============+==========+=======+====================+======+=============+##
+//##|Descricao   | Classe que cria tela com campos no cabecalho e abas com va-|##
+//##|            | rios aCols.                                                |##
+//##+============+===========+================================================+##
+//##| Parametros | cNomeVar  | PARAMETRO SEM USO (compatiblidade)             |##
+//##|            | cTitulo   | Define o titulo da janela                      |##
+//##|            | cAlias    | Define o alias a ser mostrado no cabecalho     |##
+//##|            | aEditaveis| Array com campos editaveis do cabecalho        |##
+//##|            | aAbas     | Array com os titulos das abas a serem criadas  |##
+//##|            |           | e os campos nao-duplicaveis em seguida.        |##
+//##|            |           | {{"Produtos", "ZY4_PRODUT", "ZY4_ALMORI"}, ;   |##
+//##|            |           |  {"Serviços", "ZY6_PRODUT"}, ;                 |##
+//##|            |           |  {"Outra aba"}}                                |##
+//##+============+===========+================================================+##
+//##|Propriedades| oEnchoice | Objeto que contem os campos do cabecalho       |##
+//##|            | cTudoOk   | Define validacao adicional para a tela         |##
+//##+============+===========+================================================+##
+//##|   DATA     |Programador| Manutenção efetuada                            |##
+//##+============+===========+================================================+##
+//##| 07/07/17   | Cirilo R. | Revisão geral no fonte                         |##
+//##| 11/07/17   | Cirilo R. | Correções de Erro Log                          |##
+//##| 05/01/18   | Cirilo R. | Correção no TudoOK da exclusão, agora valida   |##
+//##|            |           |  também na exclusão                            |##
+//##| 19/07/19   | Cirilo R. | Pequena revisão no fonte                       |##
+//##| 30/07/19   | Cirilo R. | Tratamento para os campos de incremento automá-|##
+//##|            |           |  tico cIncAut## e também para não duplicá-los  |##
+//##| 22/08/19   | Cirilo R. | Melhoria para abrir o campos Memo usando a fun-|##
+//##|            |           |  ção CXEdtMemo na visualização e deleção       |##
+//##| 15/06/21   | Cirilo R. | Pequena revisão na diagramação da tela         |##
+//##| 22/11/21   | Cirilo R. | Correção na montagem da tela que sempre mostra-|##
+//##|            |           |  va a última aba como se estivesse ativa       |##
+//##| 31/04/22   | Cirilo R. | Mensagem quando o usuário clica no botão cance-|##
+//##|            |           |  lar pedindo confirmação antes de perder os da-|##
+//##|            |           |  dos digitados.                                |##
+//##|            |           |                                                |##
+//##|            |           |                                                |##
+//##+============+===========+================================================+##
+//###############################################################################
+CLASS TModeloAba
+	
+	//Atributos------------------------------------------------------------------------------------
+	PUBLIC DATA cClassName		AS Character 
+
+	PUBLIC DATA tmaDialogo		AS Object 
+	PUBLIC DATA oEnchoice		AS Object 
+	PUBLIC DATA aoGetDados		AS Array		//de objetos
+	PUBLIC DATA oPastas			AS Object 
+	PUBLIC DATA cTudoOk			AS Character 
+
+	PUBLIC DATA cAlias			AS Character
+//	PUBLIC DATA aNaoDuplic		AS Array
+	PUBLIC DATA aButtons		AS Array
+	
+	PUBLIC DATA nOpcEnc			AS Numeric
+	PUBLIC DATA nOpcGd			AS Numeric
+		
+	HIDE DATA oArea				AS Object
+	
+	//Metodos--------------------------------------------------------------------------------------
+	PUBLIC METHOD Create() Constructor
+	PUBLIC METHOD ClassName()				AS Character
+		  
+	PUBLIC METHOD Execute()					AS Logical
+	PUBLIC METHOD LinhaOk()					AS Logical
+	PUBLIC METHOD TudoOk()					AS Logical
+	PUBLIC METHOD Atualiza()
+
+ENDCLASS
+
+//-------------------------------------------------------------------------------------------------
+METHOD Create(	cNomeVar	,;	//01 Sem uso
+ 				cTitulo		,;	//02 Titulo da janela
+ 				cAlias		,;	//03 Alias do cabecalho do arquivo
+ 				aEditaveis	,;	//04 Campos editaveis do cabecalho, def todos
+ 				aAbas		,;	//05 Abas da tela, no formato { {cTitAba,aCpoNDup} }
+ 				nTamGd		,;	//06 Altura do cabecalho (def 150)
+ 				aButtons	,;	//07 Botoes adicionais da tela
+ 				nOpcEnch	,;	//08 nOpc customizada para a Enchoice
+ 				nOpcGrid	,;	//09 nOpc customizada para a Grid
+				aCpoEnch	;	//10 Campos para uso na Enchoice
+				 			)	CLASS TModeloAba
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local nX,nY				AS Integer
+	Local cNaoDuplic		AS Character
+	Local aTamJan			AS Array
+	Local lALTERABK			AS Logical
+	Local lINCLUIBK			AS Logical
+
+	Local aHeader			AS Array
+	Local aCols				AS Array
+	Local cIniCpos			AS Variant	//Porque pode ser nulo
+
+	Private aRotina			AS Array //Usado assim para proteger o aRotina superior e nao dar erros no MsMGet
+
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR cNomeVar		AS Character			Optional Default NIL	//Sem uso
+	ParamType 1		VAR cTitulo			AS Character
+	ParamType 2		VAR cAlias			AS Character
+	ParamType 3		VAR aEditaveis		AS Array				Optional Default NIL
+	ParamType 4		VAR aAbas			AS Array
+	ParamType 5		VAR nTamGd			AS Numeric				Optional Default 150
+	ParamType 6		VAR aButtons		AS Array				Optional Default {}
+	ParamType 7		VAR nOpcEnch		AS Numeric				Optional Default NIL
+	ParamType 8		VAR nOpcGrid		AS Numeric				Optional Default NIL
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	::cClassName	:= 'tModeloAba'
+	
+	aTamJan			:= MsAdvSize() // tamanhos da janela
+	::nOpcGd 		:=  0
+
+	::aoGetDados	:= {}
+//	::aNaoDuplic	:= {}
+	::aButtons		:= @aButtons
+
+	//Preciso guardar porque ao manipular a enchoice ela tambem altera as variaveis publicas
+	lALTERABK		:= ALTERA
+	lINCLUIBK		:= INCLUI
+
+	If ValType(nOpcGrid) == 'N'
+		::nOpcGd	:= nOpcGrid
+	Else
+		If 	INCLUI .Or. ;
+			ALTERA
+	
+			::nOpcGd	:= GD_INSERT+GD_UPDATE+GD_DELETE
+		EndIf
+	EndIf
+	
+	::cAlias    := cAlias
+
+	::oArea		:= tCtrlAlias():GetArea({Alias(),cAlias}) //Salva o alias atual para restaurar se necessario
+
+	// validacao adicional para a tela
+	::cTudoOk	:= ""
+
+	// tela de dialogo
+	::tmaDialogo := MSDialog():New(	000,000,400,600,cTitulo,/*cPar6*/,/*nPar7*/,;
+									/*lPar8*/,/*nPar9*/,/*anClrText*/,/*anClrBack*/,;
+									/*oPar12*/,oMainWnd,.T.)
+	::tmaDialogo:lMaximized	:= .T.
+	
+	//---------------------------------------------------------------------------------------------
+	If ValType(nOpcEnch) == 'N'
+		::nOpcEnc	:= nOpcEnch
+	Else
+		If 	.Not. INCLUI .And. ;
+			.Not. ALTERA
+			
+			::nOpcEnc		:= nOPC_VISUAL
+			aEditaveis 	:= {}
+		ElseIf INCLUI
+			::nOpcEnc		:= nOPC_INCLUI
+		ElseIf ALTERA
+			::nOpcEnc		:= nOPC_ALTERA
+		Endif
+	EndIf
+
+	// cria os campos de cAlias de acordo com o dicionario de dados
+	::oEnchoice := MsMGet():New(::cAlias,(::cAlias)->(Recno()),::nOpcEnc,/*aPar4*/,/*cPar5*/,;
+								/*cPar6*/,aCpoEnch,{0,0,aTamJan[4],aTamJan[3]},aEditaveis,;
+								/*nPar10*/,/*nPar11*/,/*cPar12*/,/*cTudoOk*/,::tmaDialogo,/*lF3*/,.T.)
+	
+	//Preciso restaurar porque a enchoice altera
+	ALTERA	:= lALTERABK
+	INCLUI	:= lINCLUIBK 
+	
+	//P12
+	::oEnchoice:oBox:Align := CONTROL_ALIGN_ALLCLIENT
+	
+	//Ativa a funcao U_CXEdtMemo para os campos da enchoice
+	U_CXEncMemo(cAlias,::oEnchoice)
+
+	// se for informada alguma pasta
+	If Len(aAbas) > 0
+
+		// cria TFolder
+		::oPastas := TFolder():New(	000,000,/*aTitulos*/,/*aDialogs*/,::tmaDialogo,1,;
+									/*anClrFore*/,/*anClrBack*/,.T.,/*uPar10*/,/*nLarg*/,nTamGd)
+		//P12
+		::oPastas:Align := CONTROL_ALIGN_BOTTOM
+
+		::aoGetDados	:= Array(Len(aAbas))
+
+		// Cria pastas de acordo com a quantidade de abas
+		For nX := 1 To Len(aAbas)	//Feito assim para corrigir o bug na montagem da tela que sempre mostrava a última aba!
+			::oPastas:AddItem(aAbas[nX][1],.T.)
+		Next
+		
+		For nX := Len(aAbas) To 1 Step -1
+		//For nX := 1 To Len(aAbas)
+		//	::oPastas:AddItem(aAbas[nX][1],.T.)
+
+			aHeader    	:= &("aHeader" + StrZero(nX, 2))
+			aCols      	:= &("aCols"   + StrZero(nX, 2))
+			If Type('cIncAut'+StrZero(nX,2)) == 'C'
+				cIniCpos	:= &('cIncAut'+StrZero(nX,2))
+				If Empty(cIniCpos)
+					cIniCpos	:= NIL
+				Else
+					cIniCpos	:= '+'+StrTran(cIniCpos,'+')
+				EndIf
+			Else
+				cIniCpos	:= NIL
+			EndIf
+			
+			::aoGetDados[nX]	:= MsNewGetDados():New(	015,001,020,040,::nOpcGd,/*cLinOk*/,/*cTudoOk*/,;
+														cIniCpos,/*aAlterGDa*/,/*nFreeze*/,9999,;
+														/*cFieldOk*/,/*cSuperDel*/,/*cDelOk*/,;
+														::oPastas:aDialogs[nX], aHeader, aCols)
+			::aoGetDados[nX]:oBrowse:Align 	:= CONTROL_ALIGN_ALLCLIENT
+			&("oGetDado" + StrZero(nX, 2))	:= @::aoGetDados[nX] //Compatibilidade
+
+//			aAdd(::aNaoDuplic,{}) //Campos nao duplicaveis por aba
+
+			If 	Len(aAbas[nX]) >= 2 .Or. ;
+				ValType(cIniCpos) == 'C'
+				
+				cNaoDuplic	:= ''
+				
+				//Campos inicializados tambem nao devem ser repetir
+				If ValType(cIniCpos) == 'C'
+					cIniCpos	:= StrTran(cIniCpos,'+')
+					cNaoDuplic 	:= U_CXConcTxt(cNaoDuplic,"'"+cIniCpos+"'",',')
+				EndIf
+				
+				If 	Len(aAbas[nX]) >= 2 .And. ;
+					ValType(aAbas[nX][2]) == 'A'
+					
+					For nY := 1 To Len(aAbas[nX][2])
+						If ValType(aAbas[nX][2][nY]) == 'C'
+	//						aAdd(::aNaoDuplic[nX], aAbas[nX][nY] )
+							cNaoDuplic 	:= U_CXConcTxt(cNaoDuplic,"'"+aAbas[nX][2][nY]+"'",',')
+						EndIf
+					Next
+				Else
+					For nY := 2 To Len(aAbas[nX])
+						If ValType(aAbas[nX][nY]) == 'C'
+	//						aAdd(::aNaoDuplic[nX], aAbas[nX][nY] )
+							cNaoDuplic 	:= U_CXConcTxt(cNaoDuplic,"'"+aAbas[nX][nY]+"'",',')
+						EndIf
+					Next
+				EndIf
+				If .Not. Empty(cNaoDuplic)
+					::aoGetDados[nX]:bLinhaOk := &("{|oBrw|U_CXVlDpMAba(oBrw,{"+cNaoDuplic+"}) }")
+				EndIf
+
+			EndIf
+
+		Next
+
+	Endif
+
+//	If cNomeVar == NIL //Versao nova faz ajuste interno
+//		//Ajuste do ADV
+//		If .Not. SetMdiChild()
+//			aTamJan[5]	-= 50
+//		EndIf
+//
+//		//Redimensiona a janela
+//		::tmaDialogo:nRight  := aTamJan[5] //- 50
+//		::tmaDialogo:nHeight := aTamJan[6] //- 100
+//	EndIf
+	
+Return Self
+
+//-------------------------------------------------------------------------------------------------
+METHOD Execute() CLASS TModeloAba
+	
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local lOk       	AS Logical
+	Local lCentered		AS Logical
+	Local bValid		AS CodeBlock
+	Local bOK			AS CodeBlock
+	Local bCancel		AS CodeBlock
+	Local bInit			AS CodeBlock
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	lCentered	:= .T.
+	bValid		:= {|| .T. }
+	bOK			:= {|| lOk := ::TudoOk(), Iif(lOk,::tmaDialogo:End(),)}
+	bCancel		:= {|| IIf((.Not. INCLUI .And. .Not. ALTERA) .Or. ApMsgNoYes('<h3>Você clicou no botão cancelar.'+CRLF+;
+						'Os dados digitados/alterados serão perdidos.'+CRLF+CRLF+'Confirma que deseja sair ?</h3>',U_CXTxtMsg(Self,,.T.)+'-'+U_CXTxtMsg(,2,.T.)),::tmaDialogo:End(),)}
+	bInit		:= {|| EnchoiceBar( ::tmaDialogo,bOK,bCancel,/*lMsgDel*/,::aButtons,/*nRecno*/,/*cAlias*/), ::Atualiza() }
+
+	// ativa diálog
+	::tmaDialogo:Activate(/*bPar1*/,/*bPar2*/,/*bPar3*/,lCentered,bValid,/*lPar6*/,bInit,/*bPar8*/,/*bPar9*/,.F.)
+
+	::oArea:RestArea()		//Restaura area
+
+Return lOk
+
+//-------------------------------------------------------------------------------------------------
+METHOD LinhaOk(	nAba	;	//01
+						)	CLASS TModeloAba //Compatibilidade com a rotina antiga
+	
+Return eVal(::aoGetDados[nAba]:bLinhaOk,::aoGetDados[nAba]:oBrowse)
+
+//-------------------------------------------------------------------------------------------------
+METHOD Atualiza()	CLASS TModeloAba
+
+	::oPastas:SetOption(1) 	//Força o foco na primeira aba
+	::oPastas:ShowPage(1)
+	::oPastas:Refresh() 	//Força o refresh
+	GetdRefresh() 			//força a atualização da tela
+
+Return
+
+//-------------------------------------------------------------------------------------------------
+METHOD TudoOk()	CLASS TModeloAba
+	
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local lRet 			AS Logical
+	Local lVldGrid		AS Logical
+	Local lVldEnch		AS Logical
+	Local nX			AS Integer
+	
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	lRet 	:= .T.
+	
+	If Type('EXCLUI') <> 'L' //Tratamento para variavel EXCLUI
+		Private EXCLUI	:= .F.
+	EndIf
+
+	If Type('_lForcaTOK') <> 'L'
+		Private _lForcaTOK	:= .F.
+	EndIf
+	
+	If _lForcaTOK
+		lVldGrid	:= .T.
+		lVldEnch	:= .T.
+	Else
+		lVldGrid	:= BitAnd(::nOpcGd,GD_INSERT) .Or. BitAnd(::nOpcGd,GD_UPDATE) 
+		lVldEnch	:= ( ::nOpcEnc == nOPC_INCLUI .Or. ::nOpcEnc == nOPC_ALTERA )
+	EndIf
+
+	If 	INCLUI .Or. ;
+		ALTERA .Or. ;
+		EXCLUI .Or. ;
+		_lForcaTOK 			//Forca executar o TudoOK tambem na visualizacao
+
+		If .Not. EXCLUI
+		
+			// Valida a linha atual
+			If 	lRet .And. ;
+				lVldGrid
+			
+				lRet := eVal(	::aoGetDados[::oPastas:nOption]:bLinhaOk	,;
+								::aoGetDados[::oPastas:nOption]:oBrowse		)
+
+				If .Not. lRet
+					//Torna a aba visivel
+					::oPastas:SetOption(::oPastas:nOption)
+					GetdRefresh()
+				EndIf
+			EndIf
+
+			// Valida os campos da enchoice
+			If 	lRet .And. ;
+				lVldEnch
+
+				lRet := Obrigatorio(aGets,aTela)
+			EndIf
+
+			// Valida campos de cada pasta: se der erro mostra a pasta onde esta o erro
+			If 	lRet .And. ;
+				lVldGrid
+				
+				For nX := 1 To Len(::oPastas:aDialogs)
+					lRet	:= ::aoGetDados[nX]:TudoOK()
+
+					If .Not. lRet
+
+						::oPastas:SetOption(nX) //Muda o foco para aba com o erro de validacao
+						GetdRefresh()
+
+						Exit
+					Endif
+				Next
+			EndIf
+		EndIf
+
+		// se tiver validacao adicional valida
+		If 	lRet .And. ;
+			.Not. Empty(::cTudoOk)
+
+			lRet := &(::cTudoOk)
+		Endif
+
+	EndIf
+
+Return lRet
+
+//-------------------------------------------------------------------------------------------------
+METHOD ClassName()	CLASS TModeloAba
+
+Return ::cClassName

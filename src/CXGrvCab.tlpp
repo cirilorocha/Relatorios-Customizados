@@ -1,0 +1,80 @@
+#INCLUDE "Protheus.ch"
+#INCLUDE "RWMake.ch"
+#Include "ParmType.ch"
+#INCLUDE "CXInclude.ch"
+
+//#############################################################################
+//##+----------+-----------+-------+-------------------+------+-------------+##
+//##|Programa  | CXGrvCab  | Autor | Cirilo Rocha      | Data | 19/11/2015  |##
+//##+----------+-----------+-------+-------------------+------+-------------+##
+//##|Descr.    | Funcao generica para gravacao de campos da memoria para a  |##
+//##|          | tabela fisica.                                             |##
+//##|          |                                                            |##
+//##|          | OBS.: O registro a ser gravado precisa estar setado, exceto|##
+//##|          |       quando for uma inclusao                              |##
+//##+----------+-----------+------------------------------------------------+##
+//##|   DATA   |Programador| Manutenção efetuada                            |##
+//##+----------+-----------+------------------------------------------------+##
+//##| 02/12/15 | Cirilo R. | Melhoria para verificar se existe a variável em|##
+//##|          |           |  memória                                       |##
+//##| 03/12/15 | Cirilo R. | Correção na gravação do campo filial           |##
+//##| 22/12/15 | Cirilo R. | Correção para gravar os campos não visíveis    |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+----------+-----------+------------------------------------------------+##
+//#############################################################################
+User Function CXGrvCab(	cAlias	,;	//01 cAlias
+						lInclui	,;	//02 lInclui
+						lExclui	); 	//03 lExclui
+							AS Logical
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local cVar		AS Character
+	Local cCpoFil	AS Character
+	Local cCampo	AS Character
+	Local lAlterou	AS Logical
+	Local oArea		AS Object
+	
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR cAlias		AS Character
+	ParamType 1		VAR lInclui		AS Logical
+	ParamType 2		VAR lExclui		AS Logical
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	lAlterou	:= .F.
+	cCpoFil		:= FwPrefixoCpo(cAlias)+'_FILIAL'
+	oArea		:= tCtrlAlias():GetArea({'SX3'},.F.)
+
+	RecLock(cAlias,lInclui)
+	
+		If lExclui
+			(cAlias)->(dbDelete())
+		Else
+			//grava campos com base no dicionario
+			SX3->(dbSetOrder(1))
+			SX3->(MsSeek(cAlias))
+			
+			While U_CXFieldGet('X3_ARQUIVO','SX3') == cAlias
+				cCampo	:= RTrim(U_CXFieldGet('X3_CAMPO','SX3'))
+				cVar	:= 'M->'+cCampo
+				If	RTrim(cCampo) <> cCpoFil .And. ; 
+					Type(cVar) <> "U" .And. ;
+					(cAlias)->(FieldPos(cCampo)) > 0 //Campo existe na tabela
+					
+					If U_CXFieldPut(cCampo, &cVar , cAlias)
+						lAlterou	:= .T.
+					EndIf
+				EndIf
+				
+				SX3->(dbSkip())
+			EndDo
+
+			//Grava campo filial manualmente
+			U_CXFieldPut(cCpoFil, FWxFilial(cAlias), cAlias)
+		EndIf
+	
+	(cAlias)->(MSUnLock())
+	
+	oArea:RestArea()		//Restaura area
+	
+Return lAlterou

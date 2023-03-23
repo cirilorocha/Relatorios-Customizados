@@ -1,0 +1,53 @@
+#INCLUDE "Protheus.ch"
+#INCLUDE "RWMake.ch"
+#Include "ParmType.ch"
+#INCLUDE "CXInclude.ch"
+
+//#############################################################################
+//##+----------+-----------+-------+-------------------+------+-------------+##
+//##|Programa  | CXSM0     | Autor | Cirilo Rocha      | Data | 07/02/2013  |##
+//##+----------+-----------+-------+-------------------+------+-------------+##
+//##|Descr.    | Função genérica para retornar os dados so SM0              |##
+//##+----------+-----------+------------------------------------------------+##
+//##|   DATA   |Programador| Manutenção Efetuada                            |##
+//##+----------+-----------+------------------------------------------------+##
+//##| 15/07/19 | Cirilo R. | Modernização do fonte                          |##
+//##| 29/06/21 | Cirilo R. | Pequena revisão no fonte                       |##
+//##| 23/03/23 | Cirilo R. | Pequena otimização                             |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+----------+-----------+------------------------------------------------+##
+//#############################################################################
+Static cChvAnt		:= '#@#@#@#@'					AS Character
+Static uRetCache	:= NIL							AS Variant
+//-------------------------------------------------------------------------------------------------
+User Function CXSM0(cEmpSeek,;	//01 cEmpSeek
+					cFilSeek,;	//02 cFilSeek
+					cCampo	)	//03 cCampo
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local oArea		AS Object
+	Local xRet		AS Variant
+
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR cEmpSeek			AS Character				Optional Default cEmpAnt
+	ParamType 1		VAR cFilSeek			AS Character				Optional Default cFilAnt
+	ParamType 2		VAR cCampo 				AS Character
+	
+	//---------------------------------------------------------------------------------------------
+	//Otimização!
+	If 	cChvAnt == cEmpSeek+cFilSeek+cCampo		
+		xRet	:= uRetCache
+	Else
+		oArea	:= tCtrlAlias():GetArea({'SM0'})
+			xRet	:= Posicione('SM0',1,cEmpSeek+cFilSeek,cCampo)
+		oArea:RestArea()		//Restaura area
+		oArea:Destroy()
+		FWFreeVar(oArea)
+		
+		//Guardo no cache para otimização
+		cChvAnt 	:= cEmpSeek+cFilSeek+cCampo
+		uRetCache	:= xRet
+	EndIf
+	
+Return xRet

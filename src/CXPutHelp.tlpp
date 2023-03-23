@@ -1,0 +1,117 @@
+#INCLUDE 'RWMake.ch'
+#INCLUDE 'Totvs.ch'
+#INCLUDE 'ParmType.ch'
+#INCLUDE 'CXInclude.ch'
+
+//#############################################################################
+//##+==========+===========+=======+===================+======+=============+##
+//##|Programa  | CXPutHelp | Autor | Cirilo Rocha      | Data | 28/07/2021  |##
+//##+==========+===========+=======+===================+======+=============+##
+//##|Desc.     | Função para substituir a função padrão que não funciona no |##
+//##|          | P12                                                        |##
+//##+==========+==========+=================================================+##
+//##| DATA     | ANALISTA | MANUTENÇÃO EFETUADA                             |##
+//##+==========+==========+=================================================+##
+//##|          |          |                                                 |##
+//##|          |          |                                                 |##
+//##|          |          |                                                 |##
+//##+==========+==========+=================================================+##
+//#############################################################################
+User Function CXPutHelp(cKey    ,;	//01
+                        aHlpPor ,;	//02
+                        aHlpEng ,;	//03
+                        aHlpEsp ,;	//04
+                        lUpdate  )	//05
+
+	//Declaração de Variáveis----------------------------------------------------------------------
+	Local oArea		AS Object
+	Local cTxt		AS Character
+	Local aRecXB4	AS Array
+    Local lFechaXB4 AS Logical
+	
+	//Parâmetros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR cKey   			AS Character
+	ParamType 1		VAR aHlpPor			AS Array				Optional Default {}
+	ParamType 2		VAR aHlpEng			AS Array				Optional Default aHlpPor
+	ParamType 3		VAR aHlpEsp			AS Array				Optional Default aHlpPor
+	ParamType 4		VAR lUpdate			AS Logical				Optional Default .T.
+
+	//Inicialização de Variáveis-------------------------------------------------------------------
+	oArea	:= tCtrlAlias():GetArea()
+	aRecXB4	:= {}
+	
+	//---------------------------------------------------------------------------------------------
+    If Select('CSTXB4') == 0
+        //Abro assim porque não abre de forma direta
+        dbUseArea( .T.,"TOPCONN", 'XB4', 'CSTXB4' , .T. , .F. )
+        dbSetIndex('XB4'+'1')   //XB4_CODIGO+XB4_TIPO+XB4_IDIOMA
+        lFechaXB4   := .T.
+    EndIf
+    cKey    := PadR(cKey,Len(CSTXB4->XB4_CODIGO))
+
+	CSTXB4->(MsSeek(cKey+Left(cKey,1)+'pt-br'))
+	If Len(aHlpPor) > 0
+		cTxt	:= ''
+		aEval(aHlpPor,{|x| cTxt	+= x })
+		RecLock('CSTXB4',!CSTXB4->(Found()))
+			U_CXFieldPut('XB4_CODIGO'   ,cKey			,'CSTXB4')
+			U_CXFieldPut('XB4_TIPO'	   	,Left(cKey,1)	,'CSTXB4')
+			U_CXFieldPut('XB4_HLP40'   	,'S'			,'CSTXB4')
+			U_CXFieldPut('XB4_HELP'   	,cTxt			,'CSTXB4')
+			U_CXFieldPut('XB4_IDIOMA'   ,'pt-br'		,'CSTXB4')
+		CSTXB4->(MsUnLock())
+		aAdd(aRecXB4,CSTXB4->(Recno()))
+	EndIf
+
+	//---------------------------------------------------------------------------------------------
+	CSTXB4->(MsSeek(cKey+Left(cKey,1)+'en'))
+	If Len(aHlpEng) > 0
+		cTxt	:= ''
+		aEval(aHlpEng,{|x| cTxt	+= x })
+		RecLock('CSTXB4',!CSTXB4->(Found()))
+			U_CXFieldPut('XB4_CODIGO'   ,cKey			,'CSTXB4')
+			U_CXFieldPut('XB4_TIPO'	   	,Left(cKey,1)	,'CSTXB4')
+			U_CXFieldPut('XB4_HLP40'   	,'S'			,'CSTXB4')
+			U_CXFieldPut('XB4_HELP'   	,cTxt			,'CSTXB4')
+			U_CXFieldPut('XB4_IDIOMA'   ,'en'			,'CSTXB4')
+		CSTXB4->(MsUnLock())
+		aAdd(aRecXB4,CSTXB4->(Recno()))
+	EndIf
+
+	//---------------------------------------------------------------------------------------------
+	CSTXB4->(MsSeek(cKey+Left(cKey,1)+'es'))
+	If Len(aHlpEsp) > 0
+		cTxt	:= ''
+		aEval(aHlpEsp,{|x| cTxt	+= x })
+		RecLock('CSTXB4',!CSTXB4->(Found()))
+			U_CXFieldPut('XB4_CODIGO'   ,cKey			,'CSTXB4')
+			U_CXFieldPut('XB4_TIPO'	   	,Left(cKey,1)	,'CSTXB4')
+			U_CXFieldPut('XB4_HLP40'   	,'S'			,'CSTXB4')
+			U_CXFieldPut('XB4_HELP'   	,cTxt			,'CSTXB4')
+			U_CXFieldPut('XB4_IDIOMA'   ,'es'			,'CSTXB4')
+		CSTXB4->(MsUnLock())
+		aAdd(aRecXB4,CSTXB4->(Recno()))
+	EndIf
+
+	//Apaga registros não utilizados---------------------------------------------------------------
+	CSTXB4->(MsSeek(cKey+Left(cKey,1)))
+	While CSTXB4->(!EOF()) .And. ;
+			CSTXB4->XB4_CODIGO	== cKey  .And. ;
+			CSTXB4->XB4_TIPO	== Left(cKey,1)
+		
+		If aScan(aRecXB4,CSTXB4->(Recno())) == 0
+			RecLock('CSTXB4',.F.)
+				CSTXB4->(dbDelete())
+			CSTXB4->(MsUnLock())
+		EndIf
+		CSTXB4->(dbSkip())
+	EndDo
+	
+    //Se abriu o XB4 eu fecho depois
+	If lFechaXB4
+		CSTXB4->(dbCloseArea())
+	EndIf
+
+	oArea:RestArea()	//Restaura a area
+
+Return

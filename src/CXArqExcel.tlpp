@@ -1,0 +1,122 @@
+#INCLUDE 'RWMake.ch'
+#INCLUDE 'Totvs.ch'
+#INCLUDE 'ParmType.ch'
+#INCLUDE 'CXInclude.ch'
+#include 'CXStruct.ch'
+
+//#############################################################################
+//##+----------+------------+-------+------------------+------+-------------+##
+//##|Programa  | CXArqExcel | Autor | Cirilo Rocha     | Data |  16/05/2012 |##
+//##+----------+------------+-------+------------------+------+-------------+##
+//##|Descr.    | Função para criar o arquivo temporário para impressão em   |##
+//##|          | excel.                                                     |##
+//##+----------+-----------+------------------------------------------------+##
+//##|   DATA   |Programador| Manutenção efetuada                            |##
+//##+----------+-----------+------------------------------------------------+##
+//##| 16/05/16 | Cirilo R. | Adicionado campo coluna da impressão (p/ PDF)  |##
+//##| 30/08/17 | Cirilo R. | Melhoria na tabela temporária usando o novo    |##
+//##|          |           |  objeto do P12                                 |##
+//##| 18/01/22 | Cirilo R. | Correções para release 33                      |##
+//##| 17/05/22 | Cirilo R. | Voltando a usar Ctree, em testes foi visto um  |##
+//##|          |           |  ganho absurdo de desempenho (40s -> 10s)      |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+----------+-----------+------------------------------------------------+##
+//#############################################################################
+User Function CXArqExcel(nQtdCpos);		//01
+							AS Character
+
+    //Declaracao de variaveis----------------------------------------------------------------------
+	Local aStruct 	    AS Array
+	Local cArqTrab      AS Variant //Character
+	//Local oArqTrab      AS Object
+	Local nX            AS Integer
+	Local oArea         AS Object
+	Local cItem         AS Character
+
+    //Parametros da rotina-------------------------------------------------------------------------
+    ParamType 0		VAR nQtdCpos		AS Numeric
+
+    //Inicializa Variaveis-------------------------------------------------------------------------
+    oArea		:=	tCtrlAlias():GetArea()
+    aStruct	 	:= {}
+
+	//+---------------------------------+
+	//| aStruct =	[1] cNomeCampo   	|
+	//|	       		[2] cTipo        	|
+	//|						c=caractere |
+	//|				 		n=numerico  |
+	//|				 		l=logico    |
+	//|				  		m=memo      |
+	//|				[3] nTamanho     	|
+	//|				[4] nDecimal     	|
+	//+---------------------------------+
+
+	//Campo de controle do tipo da linha
+	// C = CABECALHO
+	// A = AGRUPAMENTO
+	// T = TOTALIZADOR
+	// D = DETALHAMENTO
+	// P = QUEBRA DE PAGINA
+
+	aAdd(aStruct,Array(nST_TAMARR))
+	aTail(aStruct)[nST_CAMPO]	:= 'TRB_CXTIPO'
+	aTail(aStruct)[nST_TIPO]	:= 'C'
+	aTail(aStruct)[nST_TAMANHO]	:= 1
+	aTail(aStruct)[nST_DECIMAL]	:= 0
+
+	//Se linha separadora
+	aAdd(aStruct,Array(nST_TAMARR))
+	aTail(aStruct)[nST_CAMPO]	:= 'TRB_CXLINH'
+	aTail(aStruct)[nST_TIPO]	:= 'L'
+	aTail(aStruct)[nST_TAMANHO]	:= 1
+	aTail(aStruct)[nST_DECIMAL]	:= 0
+
+	//Preenche campos
+	For nX :=1 to nQtdCpos
+		cItem	:= StrZero(nX,2)
+
+		//Coluna da impressao
+		aAdd(aStruct,Array(nST_TAMARR))
+		aTail(aStruct)[nST_CAMPO]	:= 'CXCOL'+cItem
+		aTail(aStruct)[nST_TIPO]	:= 'N'
+		aTail(aStruct)[nST_TAMANHO]	:= 3
+		aTail(aStruct)[nST_DECIMAL]	:= 0
+	Next
+	
+	//Campos memo devem ficar no final das tabelas
+	For nX :=1 to nQtdCpos
+		cItem	:= StrZero(nX,2)
+
+		aAdd(aStruct,Array(nST_TAMARR))
+		aTail(aStruct)[nST_CAMPO]	:= 'CAMPO'+cItem
+		aTail(aStruct)[nST_TIPO]	:= 'M'
+		aTail(aStruct)[nST_TAMANHO]	:= 10
+		aTail(aStruct)[nST_DECIMAL]	:= 0
+
+	Next
+	
+	//+----------------------------+
+	//| Cria arquivo de Trabalho   |
+	//+----------------------------+
+//	If lNewTemp
+//	//	cArqTrab := CriaTrab(NIL, .F.)
+//		oArqTrab := FwTemporaryTable():New(@cArqTrab)
+//		oArqTrab:SetFields(aStruct)
+//	//	oArqTrab:AddIndex("1",{"LINHA"})
+//		oArqTrab:Create()
+//	
+//		//Destroi objeto, a tabela sera excluida pela rotina chamadora
+//		FreeObj(oArqTrab)
+//		oArqTrab := NIL
+//	Else
+////		//cArqTrab := CriaTrab(aStruct, .T.)
+//		cArqTrab := GetNextAlias()
+//		FWDBCreate( '\system\'+cArqCTREE+'.DTC', aStruct , 'CTREECDX' , .F.)	//Somente top suporte autorecno
+//		DBUseArea(.T., 'CTREECDX', '\system\'+cArqCTREE+'.DTC', (cArqCTREE), .F., .F.)
+//	EndIf
+	cArqTrab	:= U_CXDBTemp(aStruct)
+
+	oArea:RestArea()		//Restaura area
+
+Return cArqTrab

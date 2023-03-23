@@ -1,0 +1,76 @@
+#INCLUDE "Protheus.ch"
+#INCLUDE "RWMake.ch"
+#Include "ParmType.ch"
+#INCLUDE "CXInclude.ch"
+
+//ÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜÜ
+//ฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑ
+//ฑฑษออออออออออัอออออออออออหอออออออัอออออออออออออออออออหออออออัอออออออออออออปฑฑ
+//ฑฑบPrograma  ณ CXTabMAba บ Autor ณ Cirilo Rocha      บ Data ณ 19/11/2015  บฑฑ
+//ฑฑฬออออออออออุอออออออออออสอออออออฯอออออออออออออออออออสออออออฯอออออออออออออนฑฑ
+//ฑฑบDescricao ณ Funcao para setar os aCols e aHeader da respectiva tabela  บฑฑ
+//ฑฑบ          ณ                                                            บฑฑ
+//ฑฑบ          ณ                                                            บฑฑ
+//ฑฑฬออออออออออุออออออออออหอออออออออออออออออออออออออออออออออออออออออออออออออนฑฑ
+//ฑฑบ DATA     ณ ANALISTA ณ MOTIVO                                          บฑฑ
+//ฑฑฬออออออออออุออออออออออุอออออออออออออออออออออออออออออออออออออออออออออออออนฑฑ
+//ฑฑบ 24/11/16 ณ Cirilo R.ณ Adicionadas mensagens de erro                   บฑฑ
+//ฑฑบ 03/09/19 ณ Cirilo R.ณ Pequena revisao no fonte                        บฑฑ
+//ฑฑบ          ณ          ณ                                                 บฑฑ
+//ฑฑบ          ณ          ณ                                                 บฑฑ
+//ฑฑศออออออออออฯออออออออออฯอออออออออออออออออออออออออออออออออออออออออออออออออผฑฑ
+//ฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑฑ
+//฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿฿
+User Function CXTabMAba(cTabela	,;	//01
+						lCopia	) 	//02
+	
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local cGetDados		AS Character
+	Local nPos			AS Numeric
+	
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR cTabela			AS Character
+	ParamType 1		VAR lCopia			AS Logical						Optional Default .F.
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	cGetDados:= 'oGetDado'
+	
+	If Type('aTabAbas') <> 'A'
+		U_CXHelp(U_CXTxtMsg(,2,.T.),,'ERRO ao localizar a variแvel aTabAbas.',,'ENTRE EM CONTATO COM O SETOR DE T.I.')
+
+		aHeader	:= NIL //Forca erro
+		aCols	:= NIL
+		n		:= NIL
+		Return 
+	EndIf	
+	
+	nPos	:= aScan(aTabAbas,cTabela)
+	
+	If nPos > 0
+		cGetDados	+= StrZero(nPos,2)
+		
+		//Se o objeto da tela ainda esta aberto
+		If Type(cGetDados) == 'O'
+			aHeader 	:= &('@'+cGetDados+':aHeader')
+			aCols   	:= &('@'+cGetDados+':aCols')
+			n			:= &('@'+cGetDados+':nAt')
+		//Depois que a tela esta fechada
+		Else
+			aHeader	:= &('@aHeader'+StrZero(nPos,2))
+			aCols   := &('@aCols'+StrZero(nPos,2))
+		EndIf
+		
+		//Gera os arrays como copia do original (nao como referencia)
+		If lCopia
+			aHeader	:= aClone(aHeader)
+			aCols	:= aClone(aCols)
+		EndIf
+	Else
+		U_CXHelp(U_CXTxtMsg(,2,.T.),,'Erro ao localizar a tabela '+cTabela+'.',,'ENTRE EM CONTATO COM O SETOR DE T.I.')
+		
+		aHeader	:= NIL //Forca erro
+		aCols	:= NIL
+		n		:= NIL
+	EndIf
+	
+Return cGetDados

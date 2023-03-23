@@ -1,0 +1,454 @@
+#INCLUDE "Protheus.ch"
+#INCLUDE "RWMake.ch"
+#Include "ParmType.ch"
+#Include "CXInclude.ch"
+#include "CXPergunta.ch"
+
+//#############################################################################
+//##+----------+------------+-------+------------------+------+-------------+##
+//##|Programa  | CXPergunta | Autor | Ted Wagner       | Data | 18/05/2009  |##
+//##+----------+------------+-------+------------------+------+-------------+##
+//##|Descr.    | Função que cria as perguntas repassadas de um grupo de per-|##
+//##|          | tas e excluir aquelas não mais utilizadas.	                |##
+//##+----------+------------------------------------------------------------+##
+//##|Parametros| Array multidimensional como exemplificado abaixo:          |##
+//##|          |                                                            |##
+//##|          | U_CXPergunta({	{"1a. pergunta" , "C", 6,  0,, "SL1"}, ;    |##
+//##|          | 			  	{"2a. pergunta" , "C", 15, 0,, "ZET"}, ;  	|##
+//##|          | 				{"3a. pergunta" , "C", 15, 0,, "ZET"}, ;  	|##
+//##|          | 				{"4a. pergunta?", "N", 1, 0, ;              |##
+//##|          | 				    "Str(mv_par04, 1) $ '2/3'", "", "C", ;  |##
+//##|          | 					{"<Obrigatório>", "Não", "Sim"}, 1}})   |##
+//##|          |                                                            |##
+//##|          | Parametros obrigatorios:                                   |##
+//##|          |       1o. parametro: String com a pergunta                 |##
+//##|          |       2o. parametro: String com o tipo do campo            |##
+//##|          |                      - Se a pergunta for um combo, entao o |##
+//##|          |                      tipo sempre sera Numerico.            |##
+//##|          |                      - C = Caractere                       |##
+//##|          |                      - N = Numerico                        |##
+//##|          |                      - D = Data                            |##
+//##|          |       3o. parametro: Numero com o tamanho do campo		    |##
+//##|          |                      Desnecessario se :                    |##
+//##|          |                      - Informado SXG                       |##
+//##|          |                      - For do tipo Data                    |##
+//##|          |                      - For um ComboBox                     |##
+//##|          |       4o. parametro: Numero com a quantidade de decimais   |##
+//##|          |                      - Obrigatorio apenas se tipo numerico |##
+//##|          | Parametros opcionais:                                      |##
+//##|          |       5o. parametro: String com logica de validacao        |##
+//##|          |       6o. parametro: String com consulta F3         	    |##
+//##|          |       7o. parametro: String com o tipo da pergunta  	    |##
+//##|          |                      Tipos Disponiveis:                    |##
+//##|          |                      S = Texto fixo                        |##
+//##|          |                      G = Texto editavel                    |##
+//##|          |                      C = ComboBox                          |##
+//##|          |                      F = Selecao de arquivo                |##
+//##|          |                      R = Rage. Ex.: 1-10;12                |##
+//##|          |       8o. parametro: Vetor com varias opcoes em string     |##
+//##|          |       9o. parametro: Numero para indicar a opcao default   |##
+//##|          |      10o. parametro: Grupo do SXG, se informado ira sobre- |##
+//##|          |                      por o tamanho do campo.               |##
+//##|          |      11o. parametro: Valor Default da pergunta             |##
+//##|          |      12o. parametro: Help do campo (array ou string)       |##
+//##|          |      13o. parametro: Compatibilidade com CXR001            |##
+//##|          |      14o. parametro: Mascara                               |##
+//##+----------+-----------+------------------------------------------------+##
+//##|   DATA   |Programador| Manutencao efetuada                            |##
+//##+----------+-----------+------------------------------------------------+##
+//##| 20/07/11 | Cirilo R. | Melhorias gerais no fonte                      |##
+//##| 05/08/11 | Cirilo R. | Acrecentado mais um parâmetro para dizer o nome|##
+//##|          |           | da variável a ser criada.                      |##
+//##|          |           | Sugestão usar MV_BCO_DE                        |##
+//##| 07/08/11 | Cirilo R. | Melhoria no tratamento do campo SXG para compa-|##
+//##|          |           | tibilizar a pergunta com futuras atualizações  |##
+//##|          |           | de dicionário. Caso esse campo seja informado  |##
+//##|          |           | então sobrepõe o tamanho informado.            |##
+//##| 22/02/12 | Cirilo R. | Melhoria para gravar o help das perguntas      |##
+//##| 20/08/12 | Cirilo R. | Pequena correção para recriar as perguntas     |##
+//##|          |           | corretamente                                   |##
+//##| 04/10/12 | Cirilo R. | Melhoria para sempre atualizar as perguntas    |##
+//##|          |           | quando há alterações. Função CXFieldPut        |##
+//##| 17/10/12 | Cirilo R. | Ajuste para limpar os campos em caso de altera-|##
+//##|          |           | ção.                                           |##
+//##| 01/11/12 | Cirilo R. | Adicionado o 13o parametro apenas para compa-  |##
+//##|          |           | tibilidade com a rotina CXR001                 |##
+//##| 11/09/15 | Cirilo R. | Pequena revisão nos tratamentos de erro        |##
+//##| 14/07/16 | Cirilo R. | Pequena revisão no fonte                       |##
+//##| 03/09/19 | Cirilo R. | Pequena revisão no fonte                       |##
+//##| 28/07/21 | Cirilo R. | Melhoria na gravação do help                   |##
+//##| 12/11/21 | Cirilo R. | Pequena revisão no fonte                       |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+----------+-----------+------------------------------------------------+##
+//#############################################################################
+Static nTAM_DATA   := 8		AS Integer
+//-------------------------------------------------------------------------------------------------
+User Function CXPergunta(	aPerg		,;	//01 aPerg
+							cPergunta	,;	//02 cPergunta
+							lAtualiza	);	//03 lAtualiza
+								AS Logical
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local uValor		AS Variant
+	Local oArea		 	AS Object
+	Local nPosicao      AS Integer
+	Local nTamAPerg     AS Integer
+//	Local lSXG		   	AS Logical
+	Local aHelp         AS Array
+	Local nX,nY         AS Integer
+	Local cOrdem        AS Character
+	Local cHelp			AS Character
+	Local nTamOrd		AS Integer
+
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR aPerg				AS Array
+	ParamType 1		VAR cPergunta			AS Character		Optional Default NIL
+	ParamType 2		VAR lAtualiza			AS Logical			Optional Default FwSuperGetMV('MX_VLDPERG', .F., .T.)
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	oArea		:= tCtrlAlias():GetArea({'SX1','SXG'})
+//	lSXG		:= .F.
+	nTamOrd		:= Len(U_CXFieldGet('X1_ORDEM','SX1'))
+
+	//Variaveis compartilhadas de mensagens de erro
+	cMsgErr		:= IIf(Type('cMsgErr')<>'C','',cMsgErr)
+	cCodErr		:= IIf(Type('cCodErr')<>'C','',cCodErr)
+	cSoluc		:= IIf(Type('cSoluc')<>'C','',cSoluc)
+	cMsg		:= IIf(Type('cMsg')<>'C','',cMsg)
+
+	//Caso o parametro nao seja informado tenta buscar da variavel privada cPerg
+	If ValType(cPergunta) == 'U'
+		If Type('cPerg') == 'U'
+
+			U_CXMsgErro('Chamada da função sem parâmetro e sem a variável private cPerg.',;
+						'INFORME O SETOR DE T.I.',/*lMsg*/,/*oArea*/)
+			Return .F.
+		ElseIf Type('cPerg') <> 'C'
+			U_CXMsgErro('Chamada da função sem parâmetro e com o tipo da variável cPerg diferente de caractere.',;
+						'INFORME O SETOR DE T.I.',/*lMsg*/,/*oArea*/)
+			Return .F.
+		ElseIf Empty(cPerg)
+			U_CXMsgErro('Chamada da função sem parâmetro e com a variável cPerg vazia.',;
+						'INFORME O SETOR DE T.I.',/*lMsg*/,/*oArea*/)
+			Return .F.
+		Else
+			cPergunta	:= cPerg
+		EndIf
+	ElseIf ValType(cPergunta) <> 'C'
+		U_CXMsgErro('Chamada da função com o tipo do parâmetro cPergunta diferente de caractere.',;
+					'INFORME O SETOR DE T.I.',/*lMsg*/,/*oArea*/)
+		Return .F.
+	ElseIf Empty(cPergunta)
+		U_CXMsgErro('Chamada da função com o parâmetro cPergunta vazia.',;
+					'INFORME O SETOR DE T.I.',/*lMsg*/,/*oArea*/)
+		Return .F.
+	EndIf
+
+	//Compatibiliza com o tamanho do campo X1_GRUPO
+	cPergunta := PadR(AllTrim(Upper(cPergunta)),Len(U_CXFieldGet('X1_GRUPO','SX1')))
+
+	//dbSelectArea("SX1")
+	SX1->(dbSetOrder(1)) // grupo + ordem
+
+	For nX := 1 To Len(aPerg)
+		//Tratamento de erros
+		If ValType(aPerg[nX]) == 'U'
+			Loop
+		EndIf
+
+		cOrdem	:= StrZero(nX,nTamOrd)
+
+		// se nao achar a pergunta cria
+		If ! SX1->( MsSeek(cPergunta + cOrdem) ) .Or. ;
+			lAtualiza
+
+//			lSXG		 	:= .F.
+			nTamAPerg 	:= Len(aPerg[nX])
+
+			RecLock("SX1", SX1->(!Found()) )
+
+				U_CXFieldPut('X1_GRUPO',cPergunta,'SX1')
+				U_CXFieldPut('X1_ORDEM',cOrdem,'SX1')
+
+				uValor	:= aPerg[nX, nCX_PERGUN]
+				U_CXFieldPut('X1_PERGUNT',uValor,'SX1')
+				U_CXFieldPut('X1_PERSPA' ,uValor,'SX1')
+				U_CXFieldPut('X1_PERENG' ,uValor,'SX1')
+
+				uValor	:= "MV_CH"
+				If nX < 10
+					uValor	+= StrZero(nX,1)
+				Else
+					uValor	+= Chr(nX + 55)
+				EndIf
+				U_CXFieldPut('X1_VARIAVL',uValor,'SX1')
+				U_CXFieldPut('X1_TIPO'   ,aPerg[nX,nCX_TIPO],'SX1')
+
+				//Se foi preenchido o grupo dos SXG considera o tamanho dela
+
+				//Se tipo data entao tamanho sempre 8
+				If aPerg[nX, nCX_TIPO] == 'D'
+					U_CXFieldPut('X1_TAMANHO',nTAM_DATA,'SX1')
+				//Compatibiliza tamanho do decimal e tamanho do campo
+				ElseIf aPerg[nX, nCX_TIPO] == 'N'
+					//Corrigir possivel problema com o tamanho do campo Decimal
+					If aPerg[nX, nCX_TAMANH] < aPerg[nX, nCX_DECIMA]
+						U_CXFieldPut('X1_TAMANHO',aPerg[nX, nCX_DECIMA],'SX1')
+					Else
+						U_CXFieldPut('X1_TAMANHO',aPerg[nX, nCX_TAMANH],'SX1')
+					EndIf
+
+					//Preenche os decimais apenas se tipo numerico
+					If 	aPerg[nX, nCX_TIPO] == 'N' .And. ;
+						aPerg[nX, nCX_DECIMA] > 0
+
+						U_CXFieldPut('X1_DECIMAL',aPerg[nX, nCX_DECIMA],'SX1')
+					EndIf
+				Else
+					//Preenche o SXG da pergunta e seu tamanho
+					If 	nTamAPerg >= nCX_GRPSXG .And. ;
+						ValType(aPerg[nX, nCX_GRPSXG]) == 'C' .And. ;
+						.Not. Empty(aPerg[nX, nCX_GRPSXG])
+
+						SXG->(dbSetOrder(1))
+						uValor	:= aPerg[nX, nCX_GRPSXG]
+						If SXG->(MsSeek(uValor))
+							U_CXFieldPut('X1_GRPSXG' ,uValor,'SX1')
+							//U_CXFieldPut('X1_TAMANHO',SXG->XG_SIZE,'SX1')
+							U_CXFieldPut('X1_TAMANHO',U_CXFieldGet('XG_SIZE','SXG'),'SX1')
+						Else
+							U_CXFieldPut('X1_TAMANHO',aPerg[nX, nCX_TAMANH],'SX1')
+						EndIf
+					Else
+						U_CXFieldPut('X1_TAMANHO',aPerg[nX, nCX_TAMANH],'SX1')
+					Endif
+				EndIf
+
+				If 	nTamAPerg >= nCX_GSC .And. ;
+					ValType(aPerg[nX, nCX_GSC]) == 'C' .And. ;
+					.Not. Empty(aPerg[nX, nCX_GSC])
+
+					U_CXFieldPut('X1_GSC',aPerg[nX, nCX_GSC],'SX1')
+				Else
+					U_CXFieldPut('X1_GSC','G','SX1')
+				EndIf
+
+				If 	nTamAPerg >= nCX_VALID .And. ;
+					ValType(aPerg[nX, nCX_VALID]) == 'C' .And. ;
+					.Not. Empty(aPerg[nX, nCX_VALID])
+
+					U_CXFieldPut('X1_VALID',aPerg[nX, nCX_VALID],'SX1')
+				Else
+					U_CXFieldPut('X1_VALID','','SX1')
+				EndIf
+
+				U_CXFieldPut('X1_VAR01',"MV_PAR"+cOrdem,'SX1')
+
+		//		If nTamAPerg >= nCX_VAR02 .And. ValType(aPerg[nX, nCX_VAR02]) == 'C' .And. !Empty(aPerg[nX, nCX_VAR02])
+		//			U_CXFieldPut('X1_VAR02',aPerg[nX, nCX_VAR02],'SX1')
+		//		EndIf
+
+				If 	nTamAPerg >= nCX_CNT01 .And. ;
+					ValType(aPerg[nX, nCX_CNT01]) == 'C' .And. ;
+					.Not. Empty(aPerg[nX, nCX_CNT01])
+
+					//Se tipo data precisa gravar o valor com aspas simples
+					If aPerg[nX, nCX_TIPO] == 'D'
+						//remove aspas para compatibilidade
+						cStr 		 := StrTran(AllTrim(aPerg[nX, nCX_CNT01]),"'","")
+						U_CXFieldPut('X1_CNT01',"'"+cStr+"'",'SX1')
+					Else
+						U_CXFieldPut('X1_CNT01',aPerg[nX, nCX_CNT01],'SX1')
+					EndIf
+				Else
+					U_CXFieldPut('X1_CNT01','','SX1')
+				Endif
+
+				//grava campos caso seja um combobox
+				If 	nTamAPerg >= nCX_GSC .And. ;
+					aPerg[nX, nCX_GSC] == 'C'
+
+					If 	nTamAPerg < nCX_DEF .Or. ;
+						ValType(aPerg[nX, nCX_DEF]) <> 'A' .Or. ;
+						Len(aPerg[nX, nCX_DEF]) == 0
+
+						U_CXMsgErro('Função CXPergunta()'+CRLF+;
+									'Inconsistencia na pergunta '+cPergunta+' posição '+cOrdem+' tipo '+;
+									'ComboBox e nao informado array de opções.',;
+									'INFORME O SETOR DE T.I.',/*lMsg*/,/*oArea*/)
+					Else
+						uValor	:= 1
+						If nTamAPerg >= nCX_PRESEL .And. ;
+							aPerg[nX,nCX_PRESEL] > 0
+
+							uValor	:= aPerg[nX,nCX_PRESEL]
+						Endif
+						U_CXFieldPut('X1_PRESEL',uValor,'SX1')
+
+						uValor	:= ''
+						If 	Len(aPerg[nX, nCX_DEF]) >= nCX_DEF01 .And. ;
+							ValType(aPerg[nX, nCX_DEF, nCX_DEF01]) == 'C'	//Tratamento de erro
+							
+							uValor	:= aPerg[nX, nCX_DEF, nCX_DEF01]
+						Endif
+						U_CXFieldPut('X1_DEF01'	 ,uValor,'SX1')
+						U_CXFieldPut('X1_DEFSPA1',uValor,'SX1')
+						U_CXFieldPut('X1_DEFENG1',uValor,'SX1')
+
+				//		X1_CNT01	//preenchido mais abaixo
+				//		X1_VAR02
+						uValor	:= ''
+						If 	Len(aPerg[nX, nCX_DEF]) >= nCX_DEF02 .And. ;
+							ValType(aPerg[nX, nCX_DEF, nCX_DEF02]) == 'C'	//Tratamento de erro
+							
+							uValor	:= aPerg[nX, nCX_DEF, nCX_DEF02]
+						Endif
+						U_CXFieldPut('X1_DEF02'	 ,uValor,'SX1')
+						U_CXFieldPut('X1_DEFSPA2',uValor,'SX1')
+						U_CXFieldPut('X1_DEFENG2',uValor,'SX1')
+
+				//		X1_CNT02
+				//		X1_VAR03
+						uValor	:= ''
+						If	Len(aPerg[nX, nCX_DEF]) >= nCX_DEF03 .And. ;
+							ValType(aPerg[nX, nCX_DEF, nCX_DEF03]) == 'C'	//Tratamento de erro
+							
+							uValor	:= aPerg[nX, nCX_DEF, nCX_DEF03]
+						Endif
+						U_CXFieldPut('X1_DEF03'	 ,uValor,'SX1')
+						U_CXFieldPut('X1_DEFSPA3',uValor,'SX1')
+						U_CXFieldPut('X1_DEFENG3',uValor,'SX1')
+
+				//		X1_CNT03
+				//		X1_VAR04
+						uValor	:= ''
+						If 	Len(aPerg[nX, nCX_DEF]) >= nCX_DEF04 .And. ;
+							ValType(aPerg[nX, nCX_DEF, nCX_DEF04]) == 'C'	//Tratamento de erro
+							
+							uValor	:= aPerg[nX, nCX_DEF, nCX_DEF04]
+						Endif
+						U_CXFieldPut('X1_DEF04'	 ,uValor,'SX1')
+						U_CXFieldPut('X1_DEFSPA4',uValor,'SX1')
+						U_CXFieldPut('X1_DEFENG4',uValor,'SX1')
+
+				//		X1_CNT04
+				//		X1_VAR05
+						uValor	:= ''
+						If 	Len(aPerg[nX, nCX_DEF]) >= nCX_DEF05 .And. ;
+							ValType(aPerg[nX, nCX_DEF, nCX_DEF05]) == 'C'	//Tratamento de erro
+							
+							uValor	:= aPerg[nX, nCX_DEF, nCX_DEF05]
+						Endif
+						U_CXFieldPut('X1_DEF05'	 ,uValor,'SX1')
+						U_CXFieldPut('X1_DEFSPA5',uValor,'SX1')
+						U_CXFieldPut('X1_DEFENG5',uValor,'SX1')
+
+				//		X1_CNT05
+					EndIf
+				//Limpa valores do combo
+				Else
+					U_CXFieldPut('X1_PRESEL' , 1,'SX1')
+
+					U_CXFieldPut('X1_DEF01'	 ,'','SX1')
+					U_CXFieldPut('X1_DEFSPA1','','SX1')
+					U_CXFieldPut('X1_DEFENG1','','SX1')
+
+					U_CXFieldPut('X1_DEF02'	 ,'','SX1')
+					U_CXFieldPut('X1_DEFSPA2','','SX1')
+					U_CXFieldPut('X1_DEFENG2','','SX1')
+
+					U_CXFieldPut('X1_DEF03'	 ,'','SX1')
+					U_CXFieldPut('X1_DEFSPA3','','SX1')
+					U_CXFieldPut('X1_DEFENG3','','SX1')
+
+					U_CXFieldPut('X1_DEF04'	 ,'','SX1')
+					U_CXFieldPut('X1_DEFSPA4','','SX1')
+					U_CXFieldPut('X1_DEFENG4','','SX1')
+
+					U_CXFieldPut('X1_DEF05'	 ,'','SX1')
+					U_CXFieldPut('X1_DEFSPA5','','SX1')
+					U_CXFieldPut('X1_DEFENG5','','SX1')
+				EndIf
+
+				uValor	:= ''
+				If 	nTamAPerg >= nCX_F3 .And. ;
+					ValType(aPerg[nX, nCX_F3]) == 'C' .And. ;
+					.Not. Empty(aPerg[nX, nCX_F3])
+
+					uValor	:= aPerg[nX, nCX_F3]
+				Endif
+				U_CXFieldPut('X1_F3',uValor,'SX1')
+				
+				//Grava help da pergunta-----------------------------------------------------------
+				cHelp	:= 'P.'+Trim(cPergunta) + U_CXFieldGet('X1_ORDEM','SX1') + '.'
+				aHelp	:= {}
+				If nTamAPerg >= nCX_HELP
+					
+					If 	ValType(aPerg[nX, nCX_HELP]) == 'C' .And. ;
+						.Not. Empty(aPerg[nX, nCX_HELP])
+						
+						For nY := 1 to Len(aPerg[nX, nCX_HELP]) Step 40
+							aAdd(aHelp,SubStr(aPerg[nX, nCX_HELP],nY,40))
+						Next
+						//aHelp	:= U_CXMemoLine(aPerg[nX, nCX_HELP],,,39,,.T.)
+						//For nY := 1 to len(aHelp)
+						//	aHelp[nY]	+= ' '
+						//Next
+					ElseIf	ValType(aPerg[nX, nCX_HELP]) == 'A' .And. ;
+							Len(aPerg[nX, nCX_HELP]) > 0
+
+						aHelp	:= aClone(aPerg[nX, nCX_HELP])
+					EndIf
+				Else
+//					If .Not. Empty(FwReadHelp(,cHelp)) //Verifica se ja existe help cadastrado que precisa apagar
+//						NAO CONSEGUI FUNCAO PARA APAGAR O HELP						
+//					EndIf
+				EndIf
+				U_CXPutHelp(cHelp,aHelp,/*aHelp*/,/*aHelp*/,.T.)
+				
+				//nCX_APELIDO apenas como compatibilidade com CXR001 (FUTURO)
+
+				uValor	:= ''
+				If 	nTamAPerg >= nCX_PICTURE .And. ;
+					ValType(aPerg[nX, nCX_PICTURE]) == 'C' .And. ;
+					.Not. Empty(aPerg[nX, nCX_PICTURE])
+
+					uValor	:= aPerg[nX, nCX_PICTURE]
+				EndIf
+				U_CXFieldPut('X1_PICTURE',uValor,'SX1')
+
+			SX1->(MsUnLock())
+		EndIf
+	Next
+
+	// Apaga as perguntas do grupo nao mais utilizadas
+	SX1->(MsSeek(cPergunta))
+	While SX1->(!Eof()) .And. ;
+		U_CXFieldGet('X1_GRUPO','SX1') == cPergunta
+
+		nPosicao := aScan(aPerg, { |x| RTrim(x[nCX_PERGUN]) == RTrim(U_CXFieldGet('X1_PERGUNT','SX1'))})
+		If nPosicao == 0 .Or. ;
+			StrZero(nPosicao,nTamOrd) <> U_CXFieldGet('X1_ORDEM','SX1')
+
+			RecLock("SX1",.F.)
+				SX1->(dbDelete())
+			SX1->(MsUnLock())
+		Endif
+
+		SX1->(dbSkip())
+	Enddo
+
+	oArea:RestArea()		//Restaura area
+	oArea:Destroy()
+	FWFreeVar(oArea)
+
+	//Limpa a variavel para que seja recriada a pergunta
+//	If Type('aPergunta') <> 'U'
+//		aPergunta	:= NIL
+//	EndIf
+
+	Pergunte(cPergunta, .F.) //Recarrega as perguntas
+
+Return .T.

@@ -1,0 +1,101 @@
+#Include "RWMAKE.CH" 
+#Include "protheus.CH" 
+#Include "ParmType.ch"
+#Include "CXInclude.ch"
+#Include "CXGetPerg.CH"
+
+//#############################################################################
+//##+----------+------------+-------+------------------+------+-------------+##
+//##|Programa  | CXParamRel | Autor | Cirilo Rocha     | Data | 11/09/2015  |##
+//##+----------+------------+-------+------------------+------+-------------+##
+//##|Descricao | Funcao que retorna as perguntas em forma de string para    |##
+//##|          | ser usado em impressoes                                    |##
+//##|          | U_CXParamRel(cPerg,limite,lMemo,@Cabec1,@Cabec2,nPulaPerg, |##
+//##|          |              'PARÂMETROS: ')                               |##
+//##+----------+-----------+------------------------------------------------+##
+//##|   DATA   |Programador| Manutenção Efetuada                            |##
+//##+----------+-----------+------------------------------------------------+##
+//##| 24/11/16 | Cirilo R. | Pequena revisão no fonte                       |##
+//##| 22/02/17 | Cirilo R. | Pequena melhoria no fonte para o CXR001        |##
+//##| 14/12/21 | Cirilo R. | Pequena revisão (release 33)                   |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+----------+-----------+------------------------------------------------+##
+//#############################################################################
+User Function CXParamRel(	cPergunta	,; //01 Nome do cPerg
+							nLimite		,; //02 Largura do texto
+							lMemo		,; //03 Se quebra o texto como um memo, norma e' por parametro
+							cCabec1		,; //04 Variavel Cabec1 passada por referencia (opicional)
+							cCabec2		,; //05 Variavel Cabec2 passada por referencia (opicional)
+							nLimPerg	,; //06 Limita a quantidade final de perguntas
+							cTxtIni		); //07 Textno inicial para a string
+								AS Array
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local lPrime	AS Logical
+	Local aParam	AS Array
+	Local aPergs	AS Array
+	Local cTexto	AS Character
+	Local cLinha	AS Character
+	Local nX		AS Integer
+	
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR cPergunta			AS Character		Optional Default NIL
+	ParamType 1		VAR nLimite				AS Numeric			Optional Default NIL
+	ParamType 2		VAR lMemo				AS Logical			Optional Default .F.
+	ParamType 3		VAR cCabec1				AS Character		Optional Default ''	//Por referencia
+	ParamType 4		VAR cCabec2				AS Character		Optional Default ''	//Por referencia
+	ParamType 5		VAR nLimPerg			AS Numeric			Optional Default 0
+	ParamType 6		VAR cTxtIni				AS Character		Optional Default ''
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	aParam	:= {}
+	If 	ValType(nLimite) <> 'N' .And. ;
+		Type('limite') == 'N'	//Variável privada compatilhada
+		
+		nLimite	:= limite
+	EndIf
+
+	If 	ValType(cPergunta) <> 'C' .And. ;
+		Type('cPerg') == 'C'	//Variável privada compatilhada
+		
+		cPergunta	:= cPerg
+	EndIf
+	
+	lPrime	:= .Not. Empty(cTxtIni)
+	aPergs	:= U_CXGetPerg(cPergunta)
+	cLinha	:= cTxtIni
+	For nX := 1 to len(aPergs)-nLimPerg
+		cTexto	:= aPergs[nX][nPG_TITULO]+': '+aPergs[nX][nPG_TEXTO]
+		cTexto	:= StrTran(cTexto,'::',':') //Tratamento se ja existir : no texto
+		cTexto	:= StrTran(cTexto,'?:',':') //Tratamento se ja existir ? no texto
+		If 	len(' - '+cLinha+cTexto) > nLimite .And. ;
+			.Not. lMemo
+			
+			aAdd(aParam,cLinha)
+			cLinha	:= ''
+		EndIf
+		
+		
+		If 	.Not. lPrime .And. ;
+			.Not. Empty(cLinha)
+			
+			cLinha += ' - '
+		EndIf
+		cLinha 	+= cTexto
+		lPrime	:= .F.
+	Next
+	
+	If lMemo
+		aParam	:= U_CXMemoLine(cLinha,,,nLimite,.T.,.F.)
+	Else
+		aAdd(aParam,cLinha) //Adiciona a ultima linha
+	EndIf
+	
+	//Alimenta variaveis do relatorio
+	cCabec1	:= aParam[1]
+	If len(aParam) > 1
+		cCabec2	:= aParam[2]
+	EndIf
+
+Return aParam

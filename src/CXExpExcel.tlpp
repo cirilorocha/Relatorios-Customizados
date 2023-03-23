@@ -1,0 +1,480 @@
+#INCLUDE "Protheus.ch"
+#INCLUDE "RWMake.ch"
+#INCLUDE "TOPCONN.ch"
+#Include "ParmType.ch"
+#INCLUDE "CXInclude.ch"
+#INCLUDE "CXaHeader.ch"
+#INCLUDE "CXStruct.ch"
+#INCLUDE "CXRegua.ch"
+#INCLUDE "CXaHdrStr.ch"
+
+//#############################################################################
+//##+----------+------------+-------+------------------+------+-------------+##
+//##|Programa  | CXExpExcel | Autor | Cirilo Rocha     | Data |  03/05/2011 |##
+//##+----------+------------+-------+------------------+------+-------------+##
+//##|Descr.    | Rotina desenvolvida para exportar uma tabela para excel    |##
+//##+----------+------------------------------------------------------------+##
+//##|Parametros| cAlias  = Alias do arquivo a ser exportado                 |##
+//##|          |                                                            |##
+//##|          | aStruct = [1] cNomeCampo                                   |##
+//##|          |           [2] cTipo                                        |##
+//##|          |                 c=caractere                                |##
+//##|          |                 n=numerico                                 |##
+//##|          |                 l=logico                                   |##
+//##|          |                 m=memo                                     |##
+//##|          |           [3] nTamanho                                     |##
+//##|          |           [4] nDecimal                                     |##
+//##|          |                                                            |##
+//##|          | aHdrStr = [1] cTitulo                                      |##
+//##|          |           [2] cMascara                                     |##
+//##|          |           [3] cContexto                                    |##
+//##|          |           [4] cInicializador                               |##
+//##|          |           [5] cCombo                                       |##
+//##|          |                                                            |##
+//##|          | lArqExcel = se exporta para Excel (.T.) ou BrOffice (.F.)  |##
+//##|          |                                                            |##
+//##|          | aCabec  = Array de strings para ser impressa como cabecalho|##
+//##|          |                                                            |##
+//##|          | aHeader = [01] Titulo *                                    |##
+//##|          |           [02] Campo *                                     |##
+//##|          |           [03] Picture *                                   |##
+//##|          |           [04] Tamanho                                     |##
+//##|          |           [05] Decimal                                     |##
+//##|          |           [06] Validacao                                   |##
+//##|          |           [07] Usado                                       |##
+//##|          |           [08] Tipo (C/N/D/L/M)                            |##
+//##|          |           [09] Consulta (F3)                               |##
+//##|          |           [10] Contexto (R=Real/V=Virtual) *               |##
+//##|          |           [11] Combo (string cCombo) *                     |##
+//##|          |           [12] Inicializador padrao (formato string)*      |##
+//##|          |           [13] Obrigatorio                                 |##
+//##+----------+-----------+------------------------------------------------+##
+//##|   DATA   |Programador| Manutenção efetuada                            |##
+//##+----------+-----------+------------------------------------------------+##
+//##| 12/06/11 | Cirilo R. | Adicionada variável aCabec com os textos a     |##
+//##|          |           |  serem impressos como cabeçalho do arquivo.    |##
+//##| 02/07/11 | Cirilo R. | Apagado arquivo temporário após a conclusão da |##
+//##|          |           |  exportação                                    |##
+//##| 20/07/11 | Cirilo R. | Melhoria para abrir direto o brOffice.         |##
+//##| 23/07/11 | Cirilo R. | Ajustes na classe tCtrlAlias para usar as fun- |##
+//##|          |           |  ções U_CXGetArea e U_CXRestArea               |##
+//##| 22/02/12 | Cirilo R. | Ajustes para utilizar a mesma estrutura de     |##
+//##|          |           | aHeader padrão do sistema                      |##
+//##| 07/03/12 | Cirilo R. | Tratamento para rágua de processamento         |##
+//##| 14/05/12 | Cirilo R. | Modificada a forma de impressão para adaptação |##
+//##|          |           |  para geração em HTML e PDF                    |##
+//##| 10/01/14 | Cirilo R. | Adicionado tratamento se existe o excel insta- |##
+//##|          |           |  lado                                          |##
+//##|          |           | Melhoria na compatibilidade funcao padrão      |##
+//##|          |           | ToXlsFormat com esta função customizada        |##
+//##| 15/04/15 | Cirilo R. | Correção de erro quando a função era chamada a |##
+//##|          |           |  partir de outros fontes                       |##
+//##| 11/05/16 | Cirilo R. | Pequena revisão no fonte                       |##
+//##|          |           | Ajustes por causa da impressão em pdf          |##
+//##| 13/10/21 | Cirilo R. | Desmembrada a função ToXlsFormat, pois, ela é  |##
+//##|          |           |  usada em outros fontes e não será mais possí- |##
+//##|          |           |  vel usar StaticCall (Release 33)              |##
+//##| 12/11/21 | Cirilo R. | Pequena revisão no fonte                       |##
+//##| 04/03/22 | Cirilo R. | Retirada função CriaTrab em descontinuada      |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+----------+-----------+------------------------------------------------+##
+//#############################################################################
+User Function CXExpExcel(	cAlias		,;	//01
+							aStruct		,;	//02
+							aHdrStr		,;	//03
+							lArqExcel	,;	//04
+							aCabec		,;	//05
+							aHeader		,;	//06
+							lCabCpo		);	//07
+								AS Logical
+	
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local uConteudo			AS Variant
+	Local nX				AS Integer
+//	Local nPos				AS Integer
+	Local cStr				AS Character
+//	Local cLerCmp			AS Character
+	Local cTitCpo			AS Character
+		
+	Local nHandle			AS Numeric
+	Local cBuffer			AS Character
+	Local cSep		    	AS Character
+	
+	Local cExecBrOffice		AS Character
+	Local cArquivo   		AS Character
+	Local cPath		  		AS Character
+	Local cDirDocs	  		AS Character
+	
+	Local oArea				AS Object
+	Local lStruct			AS Logical
+	Local nTamRel			AS Integer
+	Local nPosHdr			AS Integer
+	
+	Local nPICTURE	:= SX3->(FieldPos('X3_PICTURE'))	AS Integer
+	Local nTAMANHO	:= SX3->(FieldPos('X3_TAMANHO'))	AS Integer
+	Local nDECIMAL	:= SX3->(FieldPos('X3_DECIMAL'))	AS Integer
+//	Local nVALID	:= SX3->(FieldPos('X3_VALID'))		AS Integer
+	Local nUSADO	:= SX3->(FieldPos('X3_USADO'))		AS Integer
+	Local nTIPO		:= SX3->(FieldPos('X3_TIPO'))		AS Integer
+//	Local nF3		:= SX3->(FieldPos('X3_F3'))			AS Integer
+	Local nCONTEXT	:= SX3->(FieldPos('X3_CONTEXT'))	AS Integer
+	Local nRELACAO	:= SX3->(FieldPos('X3_RELACAO'))	AS Integer
+	Local nNIVEL	:= SX3->(FieldPos('X3_NIVEL'))		AS Integer
+
+	Private INCLUI			AS Logical
+	Private cPerg    		AS Character
+	
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR cAlias				AS Character
+	ParamType 1		VAR aStruct				AS Array						Optional Default NIL
+	ParamType 2		VAR aHdrStr				AS Array						Optional Default NIL
+	ParamType 3		VAR lArqExcel			AS Logical						Optional Default NIL
+	ParamType 4		VAR aCabec				AS Array						Optional Default {}
+	ParamType 5		VAR aHeader				AS Array						Optional Default {}
+    ParamType 6		VAR lCabCpo				AS Logical						Optional Default .T.
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	cExecBrOffice	:= FwSuperGetMV('MX_EXECBRO',.T.,'scalc')
+	cArquivo   		:= GetNextAlias()+".CSV" //CriaTrab(,.F.)+".CSV"
+	cPath		  	:= AllTrim(GetTempPath())
+	cDirDocs	  	:= AllTrim(MpDocPath())
+	
+	oArea			:= tCtrlAlias():GetArea({cAlias,'SX3'})
+	lStruct			:= .F.
+	nTamRel			:= 80
+	
+	cPerg    		:= 'ExpExcel'
+	INCLUI			:= .F. //substitui a variavel Publica INCLUI para uso com inicializador
+	
+	If Empty(cAlias)
+		ApMsgStop('Alias vazio.',U_CXTxtMsg(,,.T.))
+		oArea:RestArea()		//Restaura area
+		Return .F.
+	EndIf
+	
+	U_CXSetRegua(nRG_PROCESSA,0)
+	
+	//Preenche a estrutura para impressao
+	If 	ValType(aHeader) <> 'A' .Or. ;
+		Len(aHeader) == 0
+		
+		//Se os campos nao forem informado obtem dos dicionarios (SX3)
+		If ValType(aStruct) == 'U'
+			lStruct	:= .T.
+			aStruct := (cAlias)->(dbStruct())
+			If Empty(aStruct)
+				ApMsgStop('Estrutura do arquivo não pode ser lida.',U_CXTxtMsg(,,.T.))
+				oArea:RestArea()		//Restaura area
+				Return .F.
+			EndIf
+		EndIf
+	
+		//Se nao informado o aHdrStr obtem dos dicionarios
+		SX3->(dbSetOrder(2)) //X3_CAMPO
+		If 	ValType(aHdrStr) <> 'A' .Or. ;
+			len(aHdrStr) == 0
+			
+			aHdrStr	:= {}
+			For nX := 1 to len(aStruct)
+				If SX3->(dbSeek(aStruct[nX][nST_CAMPO]))
+					If	X3Uso(SX3->(FieldGet(nUSADO))) .And. ;
+						cNivel >= SX3->(FieldGet(nNIVEL))
+	
+						If lStruct
+							cContext	:= 'R'
+						Else 
+							cContext	:= SX3->(FieldGet(nCONTEXT))
+						EndIf
+						
+						cTitCpo	:= AllTrim(X3Descric()) //descricao do campo com o SX3 setado
+						//Pega o titulo resumido se o completo nao couber
+						If aStruct[nX][nST_TAMANHO] < len(cTitCpo)
+							cTitCpo	:= AllTrim(SX3->(X3Titulo())) //titulo do campo com o SX3 setado
+						EndIf
+
+						aAdd(aHdrStr,Array(nHD_TAMARR))
+						aTail(aHdrStr)[nHD_TITULO	]	:= cTitCpo
+						aTail(aHdrStr)[nHD_MASCARA	]	:= SX3->(FieldGet(nPICTURE))
+						aTail(aHdrStr)[nHD_CONTEXT	]	:= cContext
+						aTail(aHdrStr)[nHD_RELACAO	]	:= SX3->(FieldGet(nRELACAO))
+						aTail(aHdrStr)[nHD_COMBO	]	:= AllTrim(X3Cbox())
+					EndIf
+				Else
+					ApMsgStop('Estrutura do arquivo não pode ser lida. Campo '+aStruct[nX][nST_CAMPO],U_CXTxtMsg(,,.T.))
+					oArea:RestArea()		//Restaura area
+					Return .F.
+				EndIf
+			Next
+		EndIf
+	
+		aHeader	:= {}
+		nPosHdr	:= 1
+		For nX := 1 to len(aStruct)
+			If .Not. (aStruct[nX][nST_CAMPO] $ 'TRB_CXTIPO/TRB_CXLINH') .And. ; //Pula campos de controle interno
+				Left(aStruct[nX][nST_CAMPO],5) <> 'CXCOL'
+				//Verifica no array aHdrStr
+				If nPosHdr <= len(aHdrStr)
+					aAdd(aHeader,{	aHdrStr[nPosHdr][nHD_TITULO]	,; //01 Titulo
+									aStruct[nX][nST_CAMPO]			,; //02 Campo
+									aHdrStr[nPosHdr][nHD_MASCARA]	,; //03 Picture
+									aStruct[nX][nST_TAMANHO]		,; //04 Tamanho
+									aStruct[nX][nST_DECIMAL]		,; //05 Decimal
+									''								,; //06 Validacao
+									''								,; //07 Usado
+									aStruct[nX][nST_TIPO]			,; //08 Tipo (C/N/D/L/M)
+									''								,; //09 Consulta (F3)
+									aHdrStr[nPosHdr][nHD_CONTEXT]	,; //10 Contexto (R/V)
+									aHdrStr[nPosHdr][nHD_COMBO]		,; //11 Combo (S=SIM;N=NAO)
+									aHdrStr[nPosHdr][nHD_RELACAO]	,; //12 Inicializador padrao (formato string)
+									.F.							 	;  //13 Obrigatório
+									} )
+					nPosHdr++
+				//Se nao existe busca no SX3
+				ElseIf SX3->(dbSeek(aStruct[nX][nST_CAMPO]))
+					If	X3Uso(SX3->(FieldGet(nUSADO))) .And. ;
+						cNivel >= SX3->(FieldGet(nNIVEL))
+		
+						cTitCpo	:= AllTrim(X3Descric()) //descricao do campo com o SX3 setado
+						//Pega o titulo resumido se o completo nao couber
+						If SX3->(FieldGet(nTAMANHO)) < len(cTitCpo)
+							cTitCpo	:= AllTrim(SX3->(X3Titulo())) //titulo do campo com o SX3 setado
+						EndIf
+
+						aAdd(aHeader,{ 	cTitCpo							,; //01 Titulo
+										aStruct[nX][nST_CAMPO]			,; //02 Campo
+										SX3->(FieldGet(nPICTURE))		,; //03 Picture
+										SX3->(FieldGet(nTAMANHO))		,; //04 Tamanho
+										SX3->(FieldGet(nDECIMAL))		,; //05 Decimal
+										/*SX3->(FieldGet(nVALID))*/ 	,; //06 Validacao
+										/*SX3->(FieldGet(nUSADO))*/		,; //07 Usado
+										SX3->(FieldGet(nTIPO))			,; //08 Tipo (C/N/D/L/M)
+										/*SX3->(FieldGet(nF3))*/		,; //09 Consulta (F3)
+										SX3->(FieldGet(nCONTEXT))		,; //10 Contexto (R/V)
+										SX3->(X3Cbox())		 			,; //11 Combo (S=SIM;N=NAO)
+						     			SX3->(FieldGet(nRELACAO))		,; //12 Inicializador padrao (formato string)
+						     			/*X3Obrigat(aStruct[nX][nST_CAMPO])*/; //13 Obrigatório
+										} )
+					EndIf
+				Else
+					ApMsgStop('Estrutura do arquivo não pode ser lida. Campo '+aStruct[nX][nST_CAMPO],U_CXTxtMsg(,,.T.))
+					oArea:RestArea()		//Restaura area
+					Return .F.
+				EndIf
+			EndIf
+		Next
+	EndIF
+	
+	//se nao passado o parametro pergunta ao usuario
+	If 	ValType(lArqExcel) == 'U' .Or. ;
+		ValType(lArqExcel) <> 'L'
+
+		U_CXPergunta({{'Exportar para:','C', 1, 0, '', '', 'C', {'Excel', 'BrOffice'}, 1 } })
+		
+		If ! Pergunte ( cPerg , .T. , U_CXTxtMsg()+'Informe os parâmetros' )
+			oArea:RestArea()		//Restaura area
+			Return .F.
+		Endif
+		
+		If MV_PAR01  == 1
+			lArqExcel := .T.
+		Else 
+			lArqExcel := .F.
+		EndIf
+	EndIf
+	
+	//formata separador
+	If lArqExcel
+	
+		If !ApOleClient("MsExcel")
+			ApMsgStop("Microsoft Excel não instalado.",U_CXTxtMsg(,,.T.))
+			oArea:RestArea()		//Restaura area
+			Return .F.
+		EndIf
+	
+		cSep      := ';'
+	Else
+		cSep      := ','
+	EndIf
+
+	If ValType(aCabec) <> 'A'
+		aCabec	:= {}
+	EndIf
+	
+	//Obtem o cabecalho do arquivo se necessario
+	(cAlias)->(dbGoTop())
+	If (cAlias)->(FieldPos('TRB_CXTIPO')) > 0
+		While (cAlias)->(!EOF())
+			If (cAlias)->TRB_CXTIPO == 'C' //INICIO DA PAGINA
+				aAdd(aCabec,U_CXFieldGet(aHeader[1][nHDR_CAMPO],cAlias))
+			EndIf
+		
+			(cAlias)->(dbSkip())
+		EndDo
+	EndIf
+	
+	nHandle := FCreate(cDirDocs + "\" + cArquivo)
+	
+	If nHandle == -1
+		ApMsgStop(	"Erro na criação do arquivo no servidor."+CRLF+;
+					"Arquivo: "+cDirDocs + "\" + cArquivo+CRLF+;
+					"Erro: "+U_CXDescErro()+CRLF+;
+					"Contate o administrador do sistema.",U_CXTxtMsg(,,.T.))
+		oArea:RestArea()		//Restaura area
+		Return .F.
+	EndIf
+	
+	cBuffer := ''
+	FWrite(nHandle, cBuffer)
+	FWrite(nHandle, CRLF)
+	
+	//-----------------------------------------
+	
+	//Escreve cabecalho
+	cBuffer	:= ''
+	For nX := 1 To Len(aCabec)
+		cBuffer := U_CXToXlsFormat(aCabec[nX])
+		FWrite(nHandle, cBuffer)
+		FWrite(nHandle, CRLF)
+	Next nX
+	FWrite(nHandle, CRLF)
+	
+	//-----------------------------------------
+	
+	cBuffer := ''
+	FWrite(nHandle, cBuffer)
+	FWrite(nHandle, CRLF)
+	
+	//Seleciona a tabela
+	dbSelectArea(cAlias)
+	(cAlias)->(dbGoTop())
+	
+	//Escreve cabecalho
+	If lCabCpo
+		cBuffer	:= ''
+		For nX := 1 To Len(aHeader)
+			cBuffer += U_CXToXlsFormat(aHeader[nX][nHDR_TITULO])
+			If nX <> Len(aHeader)
+				cBuffer += cSep
+			EndIf
+		Next nX
+		
+		FWrite(nHandle, cBuffer)
+		FWrite(nHandle, CRLF)
+	
+		//Linha separadora
+		If 80 >= len(&(aHeader[1][nHDR_CAMPO]))
+			nTamRel	:= 80
+		ElseIf 132 >= len(&(aHeader[1][nHDR_CAMPO]))
+			nTamRel	:= 132
+		Else
+			nTamRel	:= 220
+		EndIf
+		
+		cBuffer	:= Replicate('-',nTamRel)
+		cBuffer += cSep
+		FWrite(nHandle, cBuffer)
+		FWrite(nHandle, CRLF)
+	
+	EndIf
+	
+	//-----------------------------------------
+	//Seta regua de processamento
+	U_CXSetRegua(nRG_PROCESSA,(cAlias)->(recCount()))
+	
+	//Escreve os itens
+	While (cAlias)->(!EOF())
+
+		//Incrementa processamento
+		U_CXIncRegua(nRG_PROCESSA,,'Gravando dados para a Planilha...')
+		
+		If 	(cAlias)->(FieldPos('TRB_CXTIPO')) > 0 .And. ;
+			(cAlias)->TRB_CXTIPO == 'C'
+			(cAlias)->(dbSkip())
+			
+			Loop
+		EndIf
+		
+		cBuffer	:= ''
+		
+		For nX := 1 To Len(aHeader)
+
+			If AllTrim(aHeader[nX][nHDR_CAMPO]) $ 'TRB_CXTIPO/TRB_CXLINH/CXCOL'
+				Loop
+			EndIf
+
+			If 	.Not. ('_ALI_WT' $ aHeader[nX][nHDR_CAMPO]) .And. ;
+				.Not. ('_REC_WT' $ aHeader[nX][nHDR_CAMPO])
+				
+				//trata os campos virtuais usa o inicializador do browser
+				If aHeader[nX][nHDR_CONTEXT] == 'V'
+//					cStr := &(aHeader[nX][nHDR_INIBRW])
+//					If SX3->(MsSeek(aCampos[nX][nHDR_CAMPO]))
+//						uConteudo	:= (cAlias)->(&(SX3->X3_INIBRW))
+//					Else
+//						ApMsgStop('Erro ao obter inicializador do campo '+aHeader[nX][nHDR_CAMPO],U_CXTxtMsg(,,.T.))
+//						Return .F.
+//					EndIf
+
+//					uConteudo	:= (cAlias)->(&(aHeader[nX][nHDR_RELACAO]))
+					uConteudo	:= FwInitPad(aHeader[nX][nHDR_RELACAO])
+				Else
+					uConteudo	:= U_CXFieldGet(aHeader[nX][nHDR_CAMPO],cAlias)
+				EndIf
+			 
+				//Trata os campos combos
+				If .Not. Empty(aHeader[nX][nHDR_CBOX])
+					cStr 	:= U_CXX3Combo(aHeader[nX][nHDR_CAMPO],,,,uConteudo)
+				Else
+					If aHeader[nX][nHDR_TIPO] == 'L'
+						cStr	:= Iif(uConteudo,'Sim','Não')
+					Else
+						cStr	:= Transform(uConteudo,aHeader[nX][nHDR_PICTURE])
+					EndIf
+				EndIF
+				
+				cBuffer += U_CXToXlsFormat(cStr)
+				If nX <> Len(aHeader)
+					cBuffer += cSep
+				EndIf
+			EndIf
+		Next
+		
+		FWrite(nHandle, cBuffer)
+		FWrite(nHandle, CRLF)
+		
+		(cAlias)->(dbSkip())
+	EndDo
+	
+	FClose(nHandle)
+	
+	//Seta regua
+	U_CXSetRegua(nRG_PROCESSA,0)
+	U_CXIncRegua(nRG_PROCESSA,,'Copiando planilha para o cliente...',.T.)
+
+	// copia o arquivo do servidor para o remote
+	If .Not. CpyS2T(cDirDocs + "\" + cArquivo, cPath, .T.)
+		oArea:RestArea()		//Restaura area
+		ApMsgStop(	"Erro ao copiar o arquivo "+cArquivo+" para o diretório "+cPath+" na estação do cliente."+CRLF+;
+					"Erro: "+U_CXDescErro(),U_CXTxtMsg(,,.T.))
+		Return .F.
+	EndIf
+	
+	//Apaga arquivo temporario do servidor
+	FErase(cDirDocs + "\" + cArquivo)
+	
+	If lArqExcel
+		U_CXIncRegua(nRG_PROCESSA,,'Abrindo Excel...',.T.)
+		oExcelApp := MsExcel():New()
+		oExcelApp:WorkBooks:Open(cPath + cArquivo)
+		oExcelApp:SetVisible(.T.)
+		oExcelApp:Destroy()
+	Else 
+		U_CXIncRegua(nRG_PROCESSA,,'Abrindo BrOffice...',.T.)
+	//	ShellExecute("open", cPath + cArquivo , "", "", 1)	
+		ShellExecute("open", cExecBrOffice, cPath + cArquivo , cPath , 3 )	
+	EndIf
+	
+	oArea:RestArea()		//Restaura area
+	
+Return .T. 

@@ -1,0 +1,66 @@
+#INCLUDE "Protheus.ch"
+#INCLUDE "RWMake.ch"
+#Include "ParmType.ch"
+#INCLUDE "CXInclude.ch"
+#Include "FWGetSX5.ch"
+
+//#############################################################################
+//##+==========+==============+=======+================+======+=============+##
+//##|Programa  | CXMailUsr    | Autor | Cirilo Rocha   | Data | 28/01/2017  |##
+//##+==========+==============+=======+================+======+=============+##
+//##|Descr.    | Função genérica para buscar o email do usuário, feito assim|##
+//##|          | para buscar emails diferentes em empresas diferentes.      |##
+//##+==========+===========+================================================+##
+//##|   DATA   |Programador| Manutenção Efetuada                            |##
+//##+==========+===========+================================================+##
+//##| 11/03/19 | Cirilo R. | Ajuste para utilizar a função padrão FwGetSX5  |##
+//##| 17/08/21 | Cirilo R. | Melhorina nas mensagens de erro                |##
+//##| 12/10/21 | Cirilo R. | Pequena revisão (release 33)                   |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+==========+===========+================================================+##
+//#############################################################################
+User Function CXMailUsr(cCodUsr)	//01 cCodUsr
+	
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local cMailUsr		AS Variant
+	Local aSX5			AS Array
+	
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR cCodUsr  	  		AS Character			Optional Default __cUserID
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+
+	//Variaveis compartilhadas de mensagens de erro
+	cMsgErr		:= IIf(Type('cMsgErr')<>'C','',cMsgErr)
+	cCodErr		:= IIf(Type('cCodErr')<>'C','',cCodErr)
+	cSoluc		:= IIf(Type('cSoluc')<>'C','',cSoluc)
+	cMsg		:= IIf(Type('cMsg')<>'C','',cMsg)
+	
+	If Empty(cCodUsr)
+		U_CXMsgErro('ERRO usuário não passado para a função '+U_CXTxtMsg(,,.T.)+'.',;
+					'INFORME O SETOR DE T.I.',/*lMsg*/,/*oArea*/,2)
+		cMailUsr	:= NIL
+	Else
+		aSX5		:= FWGetSX5('*0',cCodUsr)
+		If Len(aSX5) > 0
+			cMailUsr		:= aSX5[1][_X5_DESCRI]
+		ElseIf MPDicInDB() //Indica se os dicionarios estao no banco de dados
+			MPUSR_USR->(dbSetOrder(1))
+			If MPUSR_USR->(MsSeek(cCodUsr))
+				cMailUsr	:= MPUSR_USR->USR_EMAIL	
+			Else
+				U_CXMsgErro('ERRO ao localizar o usuário '+cCodUsr+' função '+U_CXTxtMsg(,,.T.)+'.',;
+							'INFORME O SETOR DE T.I.',/*lMsg*/,/*oArea*/,2)
+				cMailUsr	:= NIL
+			EndIf
+		Else
+			cMailUsr		:= UsrRetMail(cCodUsr)
+		EndIf
+
+		If cMailUsr <> NIL
+			cMailUsr	:= Lower(RTrim(cMailUsr))
+		EndIf
+	EndIf
+	
+Return cMailUsr

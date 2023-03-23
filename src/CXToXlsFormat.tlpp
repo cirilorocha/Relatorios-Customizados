@@ -1,0 +1,120 @@
+#INCLUDE 'RWMake.ch'
+#INCLUDE 'Totvs.ch'
+#INCLUDE 'ParmType.ch'
+#INCLUDE 'CXInclude.ch'
+
+Static __aComboSX3	:= {}		AS Array
+
+//#############################################################################
+//##+----------+-----------+------+--------------------+------+-------------+##
+//##|Programa  |ToXlsFormat|Autor |Cirilo Rocha        | Data |  12/06/2011 |##
+//##+----------+-----------+------+--------------------+------+-------------+##
+//##|Desc.     | Rotina utilizada em substituição a função padrão para con- |##
+//##|          | verter uma string para formato excel.                      |##
+//##|          | A funcao padrão faz um Alltrim retirando o alinhamento do  |##
+//##|          | campo. Por isso foi customizada essa função.               |##
+//##+----------+-----------+------------------------------------------------+##
+//##|   DATA   |Programador| Manutenção efetuada                            |##
+//##+----------+-----------+------------------------------------------------+##
+//##| 13/10/21 | Cirilo R. | Desmembrada da função CXExpExcel para não uti- |##
+//##|          |           |  lizar mais StatiCall (Relase 33)              |##
+//##| 16/12/21 | Cirilo R. | Redução das críticas do CodeAnalysis           |##
+//##|          |           | Pequena otimização                             |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+----------+-----------+------------------------------------------------+##
+//#############################################################################
+User Function CXToXlsFormat(uValue		,;	//01
+							cCampoSX3	)	//02
+	
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local cComboSX3		AS Character
+	//Local oAreaSX3		AS Object
+	Local oArea		    AS Object
+	Local nTamCpo		AS Integer
+	Local nPos		    AS Integer
+	Local aX3cBox		AS Array
+
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR uValue			AS Character,Numeric,Date,Logical	Optional Default NIL
+	ParamType 1		VAR cCampoSX3		AS Character						Optional Default NIL
+	
+	//---------------------------------------------------------------------------------------------
+	If ValType(cCampoSX3) == 'C'
+		nPos := aScan(__aComboSX3,{|x| x[1] == cCampoSX3})
+		If nPos > 0 
+			cComboSX3 	:= __aComboSX3[nPos][2]
+			nTamCpo		:= __aComboSX3[nPos][3]
+            aX3cBox		:= __aComboSX3[nPos][4]
+		Else
+			oArea		:= tCtrlAlias():GetArea({'SX3'})
+			//oAreaSX3	:= tCtrlAlias():GetArea('SX3')
+//			dbSelectArea("SX3")
+			SX3->(dbSetOrder(2))
+			If SX3->(MsSeek(cCampoSX3))
+				cComboSX3	:= SX3->(X3cBox())
+				nTamCpo		:= U_CXFieldGet('X3_TAMANHO','SX3')
+				If .Not. Empty(cComboSX3)
+					aX3cBox	    := RetSx3Box(cComboSX3,Nil,Nil,nTamCpo)
+				EndIf
+				aAdd(__aComboSX3,{  cCampoSX3   ,;  //01
+                                    cComboSX3   ,;  //02
+                                    nTamCpo     ,;  //03
+                                    aX3cBox     })  //04
+			EndIf
+			oArea:RestArea()		//Restaura area
+			//oAreaSX3:RestArea()		//Restaura area
+		EndIf
+	EndIf
+	
+	Do Case
+		Case ValType(uValue) == "C" 
+			uValue := RTrim(uValue) 
+			If 	ValType(cComboSX3) == 'C' .And. ;
+				.Not. Empty(cComboSX3)
+
+				uValue	:= AllTrim(uValue) //apenas em campos combo
+				//aX3cBox	:= RetSx3Box(cComboSX3,Nil,Nil,nTamCpo)
+				nPos := Ascan(aX3cBox,{|x| uValue $ x[2]})
+				If nPos > 0
+					uValue := RTrim(aX3cBox[nPos][3])
+				/*	uValue := StrTran(uValue, Chr(34), Chr(34) + Chr(34))
+					uValue := AllTrim(uValue) 
+				Else
+					uValue := StrTran(uValue, Chr(34), Chr(34) + Chr(34))
+					uValue := Chr(34) + AllTrim(uValue) + Chr(34)*/
+				EndIf
+			EndIf
+		Case ValType(uValue) == "N"
+			If ( UPPER(AllTrim(GetSrvProfString("PictFormat", ""))) == "AMERICAN" .And. ;
+				CPAISLOC <> 'BRA' )
+				//AllTrim(FwSuperGetMV("MV_PAISLOC",,"BRA")) <>  "BRA" )
+				
+		    	uValue := AllTrim(Str(uValue))
+		    Else
+				uValue := Strtran(AllTrim(Str(uValue)),".",",")
+			EndIf
+		Case ValType(uValue) == "D"
+			uValue := DToC(uValue)
+		Case ValType(uValue) == "L"
+			uValue := If(uValue, "Sim", "Não")
+		Case ValType(uValue) == "U"
+			uValue := "##NULO##"
+		OtherWise
+			uValue := ""
+	EndCase
+	
+	// dobra a quantidade de aspas existentes
+	uValue := StrTran(uValue, Chr(34), Chr(34) + Chr(34))
+	
+	//Se o primeiro caractere for um sinal de igualdade o broffice da erro, feitos 
+	//testes e adicionando um espaco em branco resolve
+	If Left(uValue,1) == '='
+		uValue	:= ' '+uValue
+	EndIf
+	
+	// adiciona as aspas como delimitador
+	uValue := Chr(34) + uValue + Chr(34)
+
+Return uValue

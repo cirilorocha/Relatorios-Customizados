@@ -1,0 +1,3686 @@
+#Include "Protheus.ch"
+#Include "RWMake.ch"
+#INCLUDE "FWPrintSetup.ch"
+#INCLUDE "RPTDEF.CH"
+#Include "ParmType.ch"
+#Include "CXApMsg.ch"
+#include "CXInclude.ch"
+#INCLUDE "CXExportar.ch"
+#include "CXStruct.ch"
+#include "CXAgrupar.ch"
+#include "CXMSPrinter.ch"
+#include "CXReturn.ch"
+#INCLUDE "CXRegua.ch"
+#INCLUDE "topconn.ch"
+#INCLUDE "SHELL.CH"
+#INCLUDE "TBICONN.CH"
+
+#DEFINE BR CRLF
+
+//#############################################################################
+//##+==========+==========+=======+====================+======+=============+##
+//##|Programa  | CXAgrupa | Autor | Cirilo Rocha       | Data |  07/06/2010 |##
+//##+==========+==========+=======+====================+======+=============+##
+//##|Descricao | Rotina desenvolvida para impressao de relatorios com  que- |##
+//##|          | bra de agrupamentos e totalizadores.                       |##
+//##|          | No final do fonte tem uma explicacao completa de como usar |##
+//##|          | a rotina.                                                  |##
+//##+==========+===========+================================================+##
+//##|   DATA   |Programador| Manutencao efetuada                            |##
+//##+==========+===========+================================================+##
+//##| 02/01/11 | Cirilo R. | Feito tratamento para cancelamento de impressão|##
+//##| 01/06/11 | Cirilo R. | Feito tratamento para impressão do texto do    |##
+//##|          |           | totalizador considerando o registro anterior   |##
+//##|          |           | do alias.                                      |##
+//##| 12/06/11 | Cirilo R. | Tratamento para exportar o relatorio para excel|##
+//##| 14/07/11 | Cirilo R. | Pequenas correcoes no alinhamento das linhas   |##
+//##|          |           | totalizadoras.                                 |##
+//##| 04/05/12 | Cirilo R. | Funcao para impressao das linhas totalizadoras |##
+//##| 14/05/12 | Cirilo R. | Modificada a forma de impressao para adaptação |##
+//##|          |           | para geração em HTML e PDF                     |##
+//##| 16/07/12 | Cirilo R. | Melhoria no tratamento de variáveis opcionais  |##
+//##| 18/07/12 | Cirilo R. | Melhoria adicionando tratamento para vários    |##
+//##|          |           | caracteres nas linhas separadadora, para os    |##
+//##|          |           | agrupamentos e totalizadores. Um para cada     |##
+//##|          |           | nivel do agrupamento.                          |##
+//##| 25/07/12 | Cirilo R. | Compatibilizado o array aImpTotGrp da rotina   |##
+//##|          |           | do NyxAgrupa.                                  |##
+//##| 19/08/12 | Cirilo R. | Melhoria para envio de relatórios por Email    |##
+//##| 30/08/12 | Cirilo R. | Correção da impressão quando o arquivo é vazio |##
+//##| 06/09/12 | Cirilo R. | Correção nas posições dos totalizadores        |##
+//##| 10/09/12 | Cirilo R. | Colocada confirmação de leitura dos emails     |##
+//##|          |           | Pequenas correções nas posições em compatibi-  |##
+//##|          |           | lidade com o NyxAgrupa                         |##
+//##|          |           | Correção na impressão quando arquivo vazio por |##
+//##|          |           | causa do filtro advpl                          |##
+//##| 05/11/12 | Cirilo R. | Diversas melhorias no fonte                    |##
+//##| 13/08/13 | Cirilo R. | Melhoria na função CXImpAgrupa para imprimir   |##
+//##|          |           | algum texto customizado após o detalhe         |##
+//##| 23/04/14 | Cirilo R. | Adicionada opção de impressão após os totali-  |##
+//##|          |           | zadores (bImpPTot)                             |##
+//##| 28/04/16 | Cirilo R. | Atualizado processo de geração de PDF          |##
+//##| 23/02/17 | Cirilo R. | Pequena revisão no fonte                       |##
+//##|          |           | Correções na impressao PDF e email             |##
+//##|          |           | Impressão do cabeçalho do detalhamento em      |##
+//##|          |           | outras páginas (CXR001)                        |##
+//##| 21/03/17 | Cirilo R. | Modernizada impressão gráfica em pdf           |##
+//##|          |           | Implementadas réguas de progressão             |##
+//##| 10/05/17 | Cirilo R. | Melhoria nas quebras de páginas                |##
+//##| 30/05/17 | Cirilo R. | Correção na geração de arquivos PDF            |##
+//##| 21/02/18 | Cirilo R. | Melhoria na impresão do cabeçalho do detalha-  |##
+//##|          |           | mento.                                         |##
+//##| 29/08/18 | Cirilo R. | Pequena revisão no fonte                       |##
+//##| 18/11/19 | Cirilo R. | Pequena revisão e otimização no fonte          |##
+//##| 01/10/21 | Cirilo R. | Grande revisão e otimização do fonte           |##
+//##| 14/12/21 | Cirilo R. | Pequena revisão (release 33)                   |##
+//##| 06/01/22 | Cirilo R. | Grande revisão e otimização do fonte           |##
+//##| 23/03/23 | Cirilo R. | Unificadas funções auxiliares: CXSay, CXSayLin,|##
+//##|          |           |  CXAgrFil,CXQuebraPag                          |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+==========+===========+================================================+##
+//#############################################################################
+
+//Separador entre colunas
+Static nSepara		:= GetMV('MX_CXRSEP',.F.,1)					AS Numeric
+Static cDriverTmp	:= GetMV('MX_ARQNEWT',.F.,'CTREECDX') 		AS Character
+
+//Static cPathPad	:= '\tReport\'		AS Character
+
+//Espessura de linhas no PDF
+Static cEspLin		:= '-6'			AS Character
+Static cLinCab		:= '-6'			AS Character
+
+Static nTamChar						AS Numeric
+
+//Tamanhos de fontes
+Static nPAIS_P		:= 12			AS Integer
+Static nPAIS_M		:= 07			AS Integer
+Static nPAIS_G		:= 05			AS Integer
+Static nRETR_P		:= 18			AS Integer
+Static nRETR_M		:= 11			AS Integer
+Static nRETR_G		:= 07			AS Integer
+//-------------------------------------------------------------------------------------------------
+User Function CXAgrupar(nLinha		,;	//01 Posicao da linha de impressao (def Lin)
+						lTotalizar	,;	//02 Forca imprimir o total indicando que e' o final do relatorio (def .F.)
+						lTotalGeral	,;	//03 Indica se deve imprimir o total geral no final do relatorio (def .T.)
+						nExpor		);	//04 Indica se exporta o relatorio (def Impressora)
+							AS Numeric
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local uTotal			AS Variant		//Variavel temporaria usada nos totalizadores
+
+	Local nPosQuebra		AS Numeric		//Indica qual o nivel que o agrupamento quebrou
+	Local nNivel			AS Numeric		//Variaveis para controle interno dos lacos
+//	Local nRecuo			AS Numeric		//Variavel usada para controle dos espacos no inicio de cada nivel
+//	Local cStr          	AS Character	//String temporaria usada para impressao dos totalizadores
+	Local cStrTemp			AS Character	//String temporaria
+	Local nCol				AS Numeric
+	Local nX				AS Integer
+	Local lQuebrar	  		AS Logical		//Indica se houve quebra de grupo
+	Local lImpAgr			AS Logical
+	Local lFrcQuebra        AS Logical
+	Local unRet				AS Variant //Numeric		//Pode ser NULL tambem as vezes
+	Local nEspTmp			AS Numeric
+
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR nLinha  	  		AS Numeric				Optional Default NIL
+	ParamType 1		VAR lTotalizar  	  	AS Logical				Optional Default .F.
+	ParamType 2		VAR lTotalGeral			AS Logical				Optional Default .T.
+	ParamType 3		VAR nExpor				AS Numeric           	Optional Default NIL
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	lQuebrar		:= .F. 	//Indica se houve quebra de grupo
+	lImpAgr			:= .F.
+	nEspTmp			:= 0
+
+	//---------------------------------------------------------------------------------------------
+	//Inicializa variavel exporta excel
+	If ValType(nLinha) <> 'N'
+		If Type('nLin') == 'N'
+			nLinha	:= nLin
+		Else
+			U_CXApMsg(U_CXTxtMsg()+'Variável nLin não informada.',nMsg_Stop,lJob)
+			Return nLin
+		EndIf
+	EndIf
+
+	If lPrimeiraVez
+
+		//Cria variavel caso nao exista
+		If Type('lJob') == "U"
+			Private lJob  			AS Logical
+			lJob  	:= .F.
+		EndIf
+
+		//Inicializa variavel exporta excel
+		If ValType(nExpor) <> 'N'
+			If Type('nExportar') == 'N'
+				nExpor	:= nExportar
+			Else
+				nExpor	:= nNormal
+			EndIf
+		EndIf
+
+		//Otimizacao
+		laGrpCpos		:= ( ValType(aGrpCpos)		== 'A')
+		laGrpCabec		:= ( ValType(aGrpCabec) 	== 'A')
+		laGrpTxtTot   	:= ( ValType(aGrpTxtTot)	== 'A')
+		laGrpImpr     	:= ( ValType(aGrpImpr) 		== 'A')
+		laImpTotGrp   	:= ( ValType(aImpTotGrp) 	== 'A')
+		//laGrpQuebPag  	:= ( ValType(aGrpQuebPag)	== 'A')
+		//laGrpEspacos  	:= ( ValType(aGrpEspacos)	== 'A')
+		//laImpMesmLin  	:= ( ValType(aImpMesmLin)	== 'A')
+		//laGrpLinAnt   	:= ( ValType(aGrpLinAnt) 	== 'A')
+		//laGrpLinDep   	:= ( ValType(aGrpLinDep) 	== 'A')
+		//laTotLinAnt   	:= ( ValType(aTotLinAnt) 	== 'A')
+		//laTotLinDep   	:= ( ValType(aTotLinDep)	== 'A')
+		//laTotCol		:= ( ValType(aTotCol)		== 'A')
+		laTotEspacos	:= ( ValType(aTotEspacos)	== 'A')
+		//lnLastKey		:= ( ValType(nLastKey)		== 'N')
+		If ( ValType('nLastKey') <> 'N')
+			nLastKey	:= 0
+		EndIf
+
+		If laGrpImpr
+			naGrpImpr		:= Len(aGrpImpr)
+		Else
+			naGrpImpr		:= 0
+		EndIf
+		//If laGrpLinAnt
+			naGrpLinAnt		:= Len(aGrpLinAnt)
+		//Else
+		//	naGrpLinAnt		:= 0
+		//EndIf
+		//If laGrpLinDep
+			naGrpLinDep		:= Len(aGrpLinDep)
+		//Else
+		//	naGrpLinDep		:= 0
+		//EndIf
+	EndIf
+
+	//+---------------------------------------------------------------------+
+	//| Verifica o cancelamento pelo usuario...                             |
+	//+---------------------------------------------------------------------+
+	If 	lAbortPrint .Or. ;
+		nLastKey == 27
+		//( lnLastKey .And. nLastKey == 27 )
+
+	  	nLinha	:= U_CXSay(nLinha,00,"*** CANCELADO PELO OPERADOR ***",,,nExpor)
+	  	nLinha++
+	  	nLin	:= nLinha
+	  	Return nLinha
+	Endif
+
+	//+---------------------+
+	//| Tratamento de erros |
+	//+---------------------+
+	//If	ValType(aGrupos) <> 'A'		//Precisa existir pelo menos aGrupos
+	//
+	//	nLin	:= nLinha
+	//	Return nLinha
+	//
+	//ElseIf	ValType(aTotalizadores) == 'A'				//Se existe o array aTotalizadores
+	//
+	//	If 	.Not. laTotEspacos .And. ;	//Precisa existir aTotEspacos ou aTotCol
+	//		.Not. laTotCol
+	//
+	//		nLin	:= nLinha
+	//		Return nLinha
+	//	EndIf
+	//EndIf
+
+	If 	ValType(aTotalizadores) == 'A' .And. ;
+		ValType(aTotMasc) == 'A' .And. ;
+		Len(aTotMasc) <> Len(aTotalizadores)
+			
+		nLinha	:= U_CXSay(nLinha,00,"*** ERRO TAMANHO ARRAY aTotMasc DIFERENTE DO aTotalizadores ***",,,nExpor)
+		
+		nLin	:= nLinha
+		Return nLinha
+	EndIf
+
+	//+------------------------------------------------+
+	//| INICIALIZACAO DAS VARIAVEIS                    |
+	//+------------------------------------------------+
+	//| Inicializacao das variaveis e totalizadores    |
+	//| Se for a primeira vez que esta sendo executado |
+	//+------------------------------------------------+
+	If lPrimeiraVez
+	
+		//+---------------------------------------------------------+
+		//| Inicializa tamanhos dos arrays aGrupos e aTotalizadores |
+		//+---------------------------------------------------------+
+		nGrpTam := Len(aGrupos)
+		If ValType(aTotalizadores) == 'A'
+			nTotTam := Len(aTotalizadores)
+		Else
+			nTotTam	:= 0
+		EndIf
+
+		//+-----------------------------+
+		//| Inicializa o array aUltimos |
+		//+-----------------------------+
+		aUltimos := Array(nGrpTam)
+		aTxtTot  := Array(nGrpTam)
+		aFill(aUltimos,' ')
+
+		//+-------------------------------------+
+		//| Adiciona texto do totalizador geral |
+		//+-------------------------------------+
+		aAdd(aTxtTot,'TOTAL GERAL')
+
+		//+-------------------------------------------------+
+		//| Trata a execucao do array aTotBloco ou aTotMasc |
+		//| se infomado aTotMasc monta o bloco de codigo    |
+		//| sua execucao.                                   |
+		//+-------------------------------------------------+
+		If ValType(aTotMasc) == 'A'
+			aTotBloco := {}
+			For nCol := 1 to nTotTam
+				aAdd( aTotBloco, &("{ |nVlr,nCol,nNv| Transform(nVlr,'"+AllTrim(aTotMasc[nCol])+"') } ") )
+			Next
+		EndIf
+
+		//+---------------------------+
+		//| Inicializa array _aTotGrp |
+		//+---------------------------+
+		_aTotGrp := Array(nGrpTam+1,nTotTam)
+		For nNivel := 1 to nGrpTam + 1	//Adiciona o ultimo nivel para o total geral
+			For nCol := 1 to nTotTam
+				_aTotGrp[nNivel][nCol]	:= 0
+			Next
+		Next
+
+		//+---------------------------------------------------------------+
+		//| Inicializa array aGrpEspacos, sera preenchido mais a frente   |
+		//+---------------------------------------------------------------+
+		//If .Not. laGrpEspacos
+		//	laGrpEspacos	:= .T.
+		//	aGrpEspacos 	:= {}
+		//EndIf
+
+		//+------------------------------------+
+		//| Preenche aTotCol se nao informado  |
+		//+------------------------------------+
+		//If .Not. laTotCol
+		//	laTotCol	:= .T.
+		//	aTotCol 	:= {}
+			For nCol := 1 to nTotTam
+				aAdd(aTotCol,nCol)
+			Next
+		//EndIf
+
+		//+-------------------------------------+
+		//| Compatibiliza as linhas separadoras |
+		//+-------------------------------------+
+		//If ValType(cGrpLinAnt) <> 'C'
+		//	cGrpLinAnt	:= ''
+		//EndIf
+
+		//If ValType(cGrpLinDep) <> 'C'
+		//	cGrpLinDep	:= ''
+		//EndIf
+
+		//If ValType(cTotLinAnt) <> 'C'
+		//	cTotLinAnt	:= ''
+		//EndIf
+
+		//If ValType(cTotLinDep) <> 'C'
+		//	cTotLinDep	:= ''
+		//EndIf
+
+		//If .Not. laImpMesmLin
+		//	laImpMesmLin	:= .T.
+		//	aImpMesmLin		:= {}
+		//Endif
+
+		//If .Not. laGrpLinAnt
+		//	laGrpLinAnt	:= .T.
+		//	aGrpLinAnt	:= {}
+		//	naGrpLinAnt	:= 0
+		//EndIF
+
+		//If .Not. laGrpLinDep
+		//	laGrpLinDep	:= .T.
+		//	aGrpLinDep	:= {}
+		//	naGrpLinDep	:= 0
+		//EndIF
+
+		//If .Not. laTotLinAnt
+		//	laTotLinAnt	:= .T.
+		//	aTotLinAnt	:= {}
+		//EndIF
+
+		//If .Not. laTotLinDep
+		//	laTotLinDep	:= .T.
+		//	aTotLinDep	:= {}
+		//EndIF
+
+		//Se a variavel nEspGrp foi informada
+		//If ValType(nEspGrp) <> 'N'
+		//	nEspGrp	:= FwSuperGetMV('MX_ESPGRP',.F.,3) //Espaçamentos entre os niveis de agrupamento
+		//EndIf
+
+		//Compatibiliza arrays opcionais
+		For nX := 1 to nGrpTam
+
+			//Textos do cabecalho do agrupamento
+			If laGrpCabec
+				If nX > Len(aGrpCabec)
+					aAdd(aGrpCabec,'')
+				ElseIf ValType(aGrpCabec[nX]) <> 'C'
+					aGrpCabec[nX]	:= ''
+				EndIf
+			EndIf
+
+			//Texto da linha totalizadora do nivel
+			If laGrpTxtTot
+				If nX > Len(aGrpTxtTot)
+					aAdd(aGrpTxtTot,'"Totais"')
+				ElseIf ValType(aGrpTxtTot[nX]) <> 'C'
+					aGrpTxtTot[nX]	:= '"Totais"'
+				EndIf
+			EndIf
+
+			//Imprime agrupamentos
+			If laGrpImpr
+				If nX > naGrpImpr //Len(aGrpImpr)
+					aAdd(aGrpImpr,.T.)
+					naGrpImpr ++ 
+				ElseIf ValType(aGrpImpr[nX]) <> 'L'
+					aGrpImpr[nX]	:= .T.
+				EndIf
+			EndIf
+
+			//Imprime totalizadores
+			If laImpTotGrp
+				If nX > Len(aImpTotGrp)
+					aAdd(aImpTotGrp,.T.)
+				ElseIf ValType(aImpTotGrp[nX]) <> 'L'
+					aImpTotGrp[nX]	:= .T.
+				EndIf
+			EndIf
+
+			//Quebra pagina por nivel
+			//If laGrpQuebPag
+				If nX > Len(aGrpQuebPag)
+					aAdd(aGrpQuebPag,.F.)
+				ElseIf ValType(aGrpTxtTot[nX]) <> 'C'
+					aGrpQuebPag[nX]	:= .F.
+				EndIf
+			//EndIf
+
+			//Preenche espacamentos entre niveis
+			//If laGrpEspacos
+				//O primeiro agrupamento comeca na posicao 0
+				If nX == 1
+					nEspTmp	:= 0
+				//Os demais sao espacos 3 caracteres um do outro
+				Else
+					nEspTmp	+= nEspGrp
+				EndIf
+
+				If nX > Len(aGrpEspacos)
+					aAdd(aGrpEspacos, nEspTmp )
+				ElseIf ValType(aGrpEspacos[nX]) <> 'N'
+					aGrpEspacos[nX]	:= nEspTmp
+				EndIf
+			//EndIf
+
+			//+---------------------------------------------------------+
+			//| Esse processo de preencher o aImpMesmLin precisa ocorrer|
+			//| antes do preencheimento do array aTotLinAnt             |
+			//+---------------------------------------------------------+
+
+			//Imprime na mesma linha o agrupamento e totalizador
+			//If laImpMesmLin
+				If nX > Len(aImpMesmLin)
+					aAdd(aImpMesmLin,.F.)
+				ElseIf ValType(aImpMesmLin[nX]) <> 'L'
+					aImpMesmLin[nX]	:= .F.
+				EndIf
+			//EndIf
+
+			//Preenche array com os caracteres da linha separadora
+			//If laGrpLinAnt
+				If nX > naGrpLinAnt
+					aAdd(aGrpLinAnt,cGrpLinAnt)
+					naGrpLinAnt	++ 
+				ElseIf ValType(aGrpLinAnt[nX]) <> 'C'
+					aGrpLinAnt[nX]	:= cGrpLinAnt
+				EndIf
+			//EndIf
+
+			//If laGrpLinDep
+				If nX > naGrpLinDep
+					aAdd(aGrpLinDep,cGrpLinDep)
+					naGrpLinDep	++
+				ElseIf ValType(aGrpLinDep[nX]) <> 'C'
+					aGrpLinDep[nX]	:= cGrpLinDep
+				EndIf
+			//EndIf
+
+			//If laTotLinAnt
+				//Se nao imprime na mesma linha permite linha separadora no totalizador
+				If .Not. aImpMesmLin[nX]
+					cStrTemp	:= cTotLinAnt
+				Else
+					cStrTemp	:= ''
+				EndIf
+
+				If nX > Len(aTotLinAnt)
+					aAdd(aTotLinAnt,cStrTemp)
+				ElseIf ValType(aTotLinAnt[nX]) <> 'C'
+					aTotLinAnt[nX]	:= cStrTemp
+				//Se imprime na mesma linha limpa o que tiver no elemento do array
+				ElseIf aImpMesmLin[nX]
+					aTotLinAnt[nX]	:= cStrTemp
+				EndIf
+			//EndIf
+
+			//If laTotLinDep
+				If nX > Len(aTotLinDep)
+					aAdd(aTotLinDep,cTotLinDep)
+				ElseIf ValType(aTotLinDep[nX]) <> 'C'
+					aTotLinDep[nX]	:= cTotLinDep
+				EndIf
+			//EndIf
+
+		Next //Fim for aGrupos
+
+		//Se um nivel inferior tiver quebra, os niveis acima tb precisam ter!
+		//If laGrpQuebPag
+			lFrcQuebra	:= .F.
+			For nX := len(aGrpQuebPag) to 1 step -1
+				If aGrpQuebPag[nX]
+					lFrcQuebra	:= .T.
+				EndIf
+				aGrpQuebPag[nX]	:= lFrcQuebra
+			Next
+		//EndIf
+
+		//+----------------------------------------------------+
+		//| Preenche o espacamento para impressao dos detalhes |
+		//+----------------------------------------------------+
+		If ValType(nEspDetalhe) <> 'N'
+			nEspDetalhe	:= 0
+
+			If len(aGrupos) > 0
+
+				//Soma os espacos para todos os agrupamentos
+				For nX := 1 to len(aGrpEspacos)
+					If 	( .Not. laGrpImpr   .Or. aGrpImpr[nX] )				.And. ;	//Imprime este nivel?
+						( .Not. laImpTotGrp .Or. aImpTotGrp[nX]	)
+
+						nEspDetalhe := aGrpEspacos[nX] 	//Obtem o espacamento do ultimo nivel de agrupamentos
+						lImpAgr		:= .T. 				//Imprime agrupamentos?
+					EndIf
+				Next
+
+				//Tem agrupamento a imprimir?
+				If lImpAgr
+					//Avanca um nivel
+					nEspDetalhe	+= nEspGrp
+				EndIf
+
+			EndIf
+		EndIf
+
+		//+------------------------------------------------+
+		//| Informacoes para impressao do total geral      |
+		//+------------------------------------------------+
+		If nTotTam > 0
+			aAdd(aGrpEspacos		, 0 )
+
+			If laGrpImpr
+				aAdd(aGrpImpr		,.T.)
+			EndIf
+
+			//If laImpMesmLin
+				aAdd(aImpMesmLin	,.F.)
+			//EndIf
+
+			//If laTotLinAnt
+				If .Not. Empty(aTail(aTotLinAnt))
+					cStrTemp	:= aTail(aTotLinAnt)
+				ElseIf .Not. Empty(cTotLinAnt)
+					cStrTemp	:= cTotLinAnt
+				Else
+					cStrTemp	:= 'G' //Linha grossa
+				EndIf
+
+				aAdd(aTotLinAnt,cStrTemp)
+			//EndIf
+
+			//If laTotLinDep
+				If .Not. Empty(aTail(aTotLinDep))
+					cStrTemp	:= aTail(aTotLinDep)
+				ElseIf .Not. Empty(cTotLinDep)
+					cStrTemp	:= cTotLinDep
+				Else
+					cStrTemp	:= '' //Sem linha
+				EndIf
+
+				aAdd(aTotLinDep,cStrTemp)
+			//EndIf
+
+			If laImpTotGrp
+				aAdd(aImpTotGrp,.T.)
+			EndIf
+
+		EndIf
+
+		//Compatibilidade com a NyxAgrupa
+		If 	Type('cCabecAgrupa') == 'C' .And. ;
+			Len(cCabecAgrupa) > 0
+
+			//Corta espacos iniciais para compatibilizar com o CXAgrupa
+			cCabecDet		:= Right(cCabecAgrupa,len(cCabecAgrupa) - nEspDetalhe )	//Cabecalho do agrupamento
+		EndIf
+
+		//Coloca a posicao inicial no aCabecDet
+		If 	ValType(aCabecDet) == 'A' .And. ;
+			Len(aCabecDet) > 0
+
+			For nX := 1 to len(aCabecDet)
+				aCabecDet[nX][nCBD_POSICAO] += nEspDetalhe
+			Next
+
+		EndIf
+	EndIf
+
+	//+------------------------------------------------------+
+	//| PROCURA QUEBRA                                       |
+	//+------------------------------------------------------+
+	//| Percorre os niveis procurando qual deve quebrar e    |
+	//| incrementando os totalizadores nesses niveis que nao |
+	//| irao quebrar                                         |
+	//+------------------------------------------------------+
+	nPosQuebra := 1
+	For nNivel := 1 to nGrpTam
+		//+-----------------------+
+		//|Quebra do agrupamento? |
+		//+-----------------------+
+		If & ( aGrupos[nNivel] ) <> aUltimos[nNivel] .Or.; 	//Mudou de agrupamento
+		 	lPrimeiraVez .Or. ;								//Ou e' primeira vez
+			lTotalizar 									  	//Ou fim do relatorio
+
+			nPosQuebra  := nNivel   //Nivel atual da quebra para controle do laco
+			lQuebrar 	:= .T. 		//Indica para imprimir todos niveis abaixo do atual em ordem descrecente
+			Exit
+		EndIf
+	Next
+
+	//+----------------------------------------------------------------------------+
+	//| IMPRIMIR TOTAIS                                                            |
+	//+----------------------------------------------------------------------------+
+	//| Imprime os totais dos niveis, do ultimo nivel para o primeiro ou o nivel   |
+	//| que deve quebrar.                                                          |
+	//| Os totais nao devem ser impressos na primeira vez que a rotina e' chamada. |
+	//| Se for a ultima chamada (lTotalizar=.T.) entao forca imprimir os totais.   |
+	//+----------------------------------------------------------------------------+
+	If 	.Not. lPrimeiraVez .And. ;
+		( lQuebrar .Or. lTotalizar )
+
+		//+----------------------------------------------------------+
+		//| Percorre os agrupamentos do ultimo ate o nivel da quebra |
+		//+----------------------------------------------------------+
+		For nNivel := nGrpTam to nPosQuebra step -1
+			//Bloco de impressao antes dos totalizadores
+			If ValType(bImpATot) == 'B' //Otimizacao
+				unRet	:= Eval(bImpATot,aUltimos,nNivel,nLinha)
+				If ValType(unRet) == 'N'
+					nLinha	:= unRet
+				EndIf
+			EndIf
+
+			nLinha	:= ImpTotais(nNivel,nLinha)
+
+			//Bloco de impressao depois dos totalizadores
+			If ValType(bImpTot) == 'B' //Otimizacao
+				unRet	:= Eval(bImpTot,aUltimos,nNivel,nLinha)
+				If ValType(unRet) == 'N'
+					nLinha	:= unRet
+				EndIf
+			EndIf
+
+		Next
+
+	EndIf
+
+	//+---------------------------------------------+
+	//| IMPRIME O TOTAL GERAL                       |
+	//+---------------------------------------------+
+	//| Imprime o total geral no final do relatorio |
+	//+---------------------------------------------+
+	If 	lTotalizar .And. ;
+		lTotalGeral
+
+		nLinha++
+		nNivel 	:= ( nGrpTam + 1 )
+
+		//Bloco de impressao depois dos totalizadores
+		If ValType(bImpATotG) == 'B' //Otimizacao
+			unRet	:= Eval(bImpATotG,aUltimos,nNivel,nLinha)
+			If ValType(unRet) == 'N'
+				nLinha	:= unRet
+			EndIf
+		EndIf
+
+		nLinha	:= ImpTotais(nNivel,nLinha,.T.)
+
+		//Bloco de impressao depois dos totalizadores
+		If ValType(bImpPTot) == 'B' //Otimizacao
+			unRet	:= Eval(bImpPTot,aUltimos,nNivel,nLinha)
+			If ValType(unRet) == 'N'
+				nLinha	:= unRet
+			EndIf
+		EndIf
+
+	EndIf
+
+	//+-----------------------------------------------+
+	//| INCREMENTA TOTAIS                             |
+	//+-----------------------------------------------+
+	//| Preenche um nivel a mais que e' o total geral |
+	//| do relatorio.                                 |
+	//+-----------------------------------------------+
+
+	For nCol := 1 to nTotTam
+		uTotal := & ( aTotalizadores[nCol] )
+		//+--------------------------------------------+
+		//| Atualizar totalizador se este for numerico.|
+		//| Caso nao seja apenas conta os registros.   |
+		//+--------------------------------------------+
+		If ValType(uTotal) <> 'N'
+			uTotal	:= 1
+		EndIf
+
+		For nNivel := 1 to nGrpTam + 1
+			_aTotGrp[nNivel][nCol] += uTotal
+		Next
+	Next
+
+	//+----------------------------------------------------------------+
+	//| IMPRIMIR OS AGRUPAMENTOS                                       |
+	//+----------------------------------------------------------------+
+	//| Nao pode imprimir na ultima chamada                            |
+	//| So deve imprimir se for para quebrar ou a primeira vez.        |
+	//+----------------------------------------------------------------+
+	If 	( lPrimeiraVez .Or. lQuebrar ) .And. ; 	//Se for a PrimeiraVez ou para Quebrar
+		.Not. lTotalizar           				//E nao for a ultima chamada
+
+		//+--------------------------------------------------+
+		//| Necessario para o tratamento quando existem duas |
+		//| linhas separadoras uma abaixo da outra           |
+		//+--------------------------------------------------+
+
+	   //Limpa caracteres para as linhas separadoras
+		cGrpLinAnt	:= ''
+		cGrpLinDep	:= ''
+
+		For nNivel := nPosQuebra to nGrpTam
+
+			//Caractere para impressao da linha separadora antes do agrupamento
+			//If 	laGrpLinAnt							.And. ;	//Se .T. tamanho e tipo OK 
+			If	.Not. Empty(aGrpLinAnt[nNivel])
+
+				cGrpLinAnt	:= aGrpLinAnt[nNivel]
+			Else
+				cGrpLinAnt	:= ''
+			EndIf
+
+			//+---------------------------------------------------------+
+			//| O tratamento para saber se imprime ou nao a linha antes |
+			//| do agrupamento devera ocorrer apos a identificacao do   |
+			//| cGrpLinAnt e antes do cGrpLinDep                        |
+			//+---------------------------------------------------------+
+			//Se possui os duas linhas separadoras juntas ignora a linha anterior (cGrpLinAnt)
+			If 	.Not. Empty(cGrpLinAnt) .And. ;	//Linha anterior o processo atual
+				.Not. Empty(cGrpLinDep) 		//Linha posterior do processo anterior
+
+				//Limpa para nao imprimir outra linha no inicio do processo
+				cGrpLinAnt	:= ''
+			EndIf
+
+			//Caractere para impressao da linha separadora depois do agrupamento
+			//If 	laGrpLinDep							.And. ;	//Se .T. tamanho e tipo OK 
+			If	.Not. Empty(aGrpLinDep[nNivel])
+
+				cGrpLinDep	:= aGrpLinDep[nNivel]
+			Else
+				cGrpLinDep	:= ''
+			EndIf
+
+			//+-----------------------------+
+			//| Guarda o ultimo agrupamento |
+			//+-----------------------------+
+			aUltimos[nNivel] 	:= & ( aGrupos[nNivel] )
+
+			//+---------------------------------------------------+
+			//| Se nao for para imprimir o nivel pula a impressao |
+			//+---------------------------------------------------+
+			If 	laGrpImpr						.And. ;
+				naGrpImpr <= nNivel				.And. ;
+				.Not. aGrpImpr[nNivel]
+
+				Loop
+			EndIf
+
+			//+-----------------------------------------+
+			//| Imprime descricao da linha totalizadora |
+			//+-----------------------------------------+
+			If 	laGrpTxtTot .And. ;
+				.Not. Empty(aGrpTxtTot[nNivel])
+
+				aTxtTot[nNivel] 	:= & ( aGrpTxtTot[nNivel] )
+			EndIf
+
+			//Inicio da quebra e nao possui linhas separadoras ou totalizadores pula uma linha
+			If 	nNivel == nPosQuebra .And. ;
+				Empty(cGrpLinAnt)	 .And. ;
+				nTotTam == 0 		 .And. ;
+				.Not. aImpMesmLin[nNivel]
+
+				nLinha ++
+			EndIf
+
+	//		nLinha ++
+
+			//+----------------------------------+
+			//| Deve quebrar pagina neste nivel  |
+			//+----------------------------------+
+			If 	.Not. lPrimeiraVez                	.And. ;
+				;//laGrpQuebPag						.And. ;	//Se .T. tamanho e tipo OK 
+				aGrpQuebPag[nNivel]					.And. ;
+				nPosQuebra >= nNivel						//Nao quebrou nos niveis superiores
+
+				nLinha := 200
+				nLinha := U_CXQuebraPag(nLinha,1,nExpor)
+			EndIf
+
+			//############################
+			//# IMPRESSAO DO AGRUPAMENTO #
+			//############################
+
+			//+----------------------------+
+			//| Linha acima do agrupamento |
+			//+----------------------------+
+			If	.Not. Empty(cGrpLinAnt)
+				nLinha	:= U_CXSayLin(	nLinha				,;	//01
+										aGrpEspacos[nNivel]	,;	//02
+										cGrpLinAnt			,;	//03
+										nExpor				,;	//04
+										nNivel				,;	//05
+										'A'					) 	//06
+				nLinha++
+			EndIf
+
+			//+--------------------------+
+			//| Cabecalho do agrupamento |
+			//+--------------------------+
+			If	laGrpCabec 	.And. ;					//Se .T. tamanho e tipo OK 
+				.Not. Empty(aGrpCabec[nNivel])
+
+				nLinha	:= U_CXSay(	nLinha				,;	//01
+									aGrpEspacos[nNivel]	,;	//02
+									&(aGrpCabec[nNivel]),;	//03
+									/*cAlin*/			,;	//04
+									/*nTamanho*/		,;	//05
+									nExpor				,;	//06
+									nNivel				,;	//07
+									'A'					) 	//08
+				nLinha++
+				nLinha	:= U_CXSayLin(nLinha,aGrpEspacos[nNivel],'-',nExpor,nNivel,'A')
+				nLinha++
+			EndIf
+
+			//+----------------------+
+			//| Texto do agrupamento |
+			//+----------------------+
+			nLinha	:= U_CXSay(	nLinha				,;	//01
+								aGrpEspacos[nNivel]	,;	//02
+								aUltimos[nNivel]	,;	//03
+								/*cAlin*/			,;	//04
+								/*nTamanho*/		,;	//05
+								nExpor				,;	//06
+								nNivel				,;	//07
+								'A'					) 	//08
+
+			//Nao salda linha se for para imprimir na mesma linha
+			If .Not. aImpMesmLin[nNivel]
+				nLinha++
+			Endif
+
+			//+-----------------------------+
+			//| Linha abaixo do agrupamento |
+			//+-----------------------------+
+			If	.Not. Empty(cGrpLinDep)
+
+				nLinha	:= U_CXSayLin(	nLinha				,;	//01
+										aGrpEspacos[nNivel]	,;	//02
+										cGrpLinDep			,;	//03
+										nExpor				,;	//04
+										nNivel				,;	//05
+										'A'					) 	//06
+				nLinha++
+			EndIf
+
+			//Se esta no ultimo nivel
+			If nNivel == nGrpTam
+				nLinha	:= ImpCabecDet(nLinha,nExpor)
+			EndIf
+		Next
+	EndIf
+
+	lPrimeiraVez := .F.
+
+	//Imprime o cabecalho do agrupamento
+	If 	nExpor <> nExcel .And. ; //Se excel/broffice nao tem cabecalho extra no detalhamento
+		nExpor <> nBrOffice
+
+		nLinha := U_CXQuebraPag(nLinha,1,nExpor) //Verifica se a pagina vai quebrar
+		If lQuebrouPg
+			nLinha	:= ImpCabecDet(nLinha,nExpor)
+		EndIf
+	EndIf
+
+	//Grava a posicao da linha atual
+	nLin := nLinha
+
+Return nLinha
+
+//#############################################################################
+//##+==========+===========+======+====================+======+=============+##
+//##|Programa  |CriaAgrupar|Autor | Cirilo Rocha       | Data |  06/06/2010 |##
+//##+==========+===========+======+====================+======+=============+##
+//##|Desc.     | Rotina utilizada antes da primeira chamada da rotina       |##
+//##|          | Agrupar(), deve ser utilizada para inicializar as variaveis|##
+//##|          | utilizada pela rotina.                                     |##
+//##|          |                                                            |##
+//##|          | Forma de Uso: U_CXCriaAgrupar()                            |##
+//##+==========+===========+================================================+##
+//##|   DATA   |Programador| Manutencao efetuada                            |##
+//##+==========+===========+================================================+##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+==========+===========+================================================+##
+//#############################################################################
+User Function CXCriaAgrupar();
+					AS Character
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local aVariaveis		AS Array
+	Local cRet				AS Character
+	Local nX				AS Integer
+
+	Static lPrimeiraVez		AS Logical		//Indica se e' a primeira vez que esta sendo executada a funcao
+	Static nGrpTam			AS Numeric		//Tamanho do array aGrupos
+	Static nTotTam			AS Numeric		//Tamanho do array aTotalizadores
+
+	Static aUltimos			AS Array		//Ultimos resultados das expressoes do aGrupos
+//	Static _aTotGrp			AS Array		//Valores totais, tamanho [nNiveis+1]x[nColunas]
+											//o nivel a mais nesse array serve para armazenar o total geral a ser impresso
+
+	//+---------------------------------------------------------+
+	//| Estas variáveis precisam ser inicializadas nessa rotina |
+	//| pois, quando o agrupa era chamado mais de uma vez       |
+	//| pelo mesmo fonte dava erro, devido a elas ainda estarem |
+	//| com o valor anterior.                                   |
+	//+---------------------------------------------------------+
+	lPrimeiraVez	:= .T.
+	aUltimos		:= NIl
+	nLin			:= 80
+
+	//Ajustes nas funcoes CXQuebraPag e CXSay
+	aCabec			:= Nil		//Variavel do CXQuebraPag
+	U_CXSay(,,'',,,,,'L') 		//Forca a limpeza da variavel de controle interno
+
+	//Cria variaveis como privada na funcao acima--------------------------------------------------
+	aVariaveis	:= {;
+					"aGrupos"		,;
+					"aGrpEspacos"	,;
+					"aGrpImpr"		,;
+					"aGrpCpos"		,;
+					;               
+					"cGrpLinAnt"	,;
+					"cGrpLinDep"	,;
+					"aGrpQuebPag"	,;
+					;
+					"aGrpCabec"		,;
+					"nEspGrp"		,;
+					"cCabecDet"		,;
+					"aCabecDet"		,;
+					"aImpTotGrp"	,;
+					"aGrpTxtTot"	,;
+					"aTxtTot"		,;
+					"aTotCol"		,;
+					"cTotLinAnt"	,;
+					"cTotLinDep"	,;
+					"aTotalizadores",;
+					"aGrpLinAnt"	,;
+					"aGrpLinDep"	,;
+					"aTotLinAnt"	,;
+					"aTotLinDep"	,;
+					"aImpMesmLin"	,;
+					"nEspDetalhe"	,;
+					"aTotMasc"		,;
+					"aTotBloco"		,;
+					"aTotEspacos"	,;
+					"nNumLinhas"	,;
+					"nSalto"		,;
+					"nExpor"		,;
+					"cArqTrab"		,;
+					"aCabec"		,;
+					"lQuebrouPg"	,; //Usado na função CXQuebraPag
+					;//Otimizacao
+					"laGrpCpos"		,;
+					"laGrpImpr"		,;
+					"laImpTotGrp"	,;
+					;//"laGrpQuebPag"	,;
+					;//"laTotLinAnt"	,;
+					;//"laTotLinDep"	,;
+					;//"laTotCol"		,;
+					"laTotEspacos"	,;
+					;//"lnLastKey"		,;
+					"naGrpLinAnt"	,;
+					"naGrpLinDep"	,;
+					"naGrpImpr"		,;
+					"laGrpCabec"	,;
+					"laGrpTxtTot"	,;
+					;//"laGrpEspacos"	,;
+					;//"laImpMesmLin"	,;
+					;//"laGrpLinAnt"	,;
+					;//"laGrpLinDep"	,;
+					;//Variáveis para impressão gráfica--------------------------------------------
+					"oRpt"			,;
+					"oFnt"			,;
+					"oFntN"			,;
+					"nIncLin"		,;
+					"nTamFont"		,;
+					"nPag"			,;
+					"nVM"			,;
+					"nHM"			,;
+					"nFH"			,;
+					"nFV"			,;
+					"bImpPTot"		,;
+					"bImpTot"		,;
+					"bImpATot"		,;
+					"bImpATotG"		,;
+					;//Esta variavel foi colocada aqui para usar dentro da impressão customizada
+					"_aTotGrp"		;
+					}
+
+	//---------------------------------------------------------------------------------------------
+
+	cRet	:= ''
+	For nX := 1 to len(aVariaveis)
+		_SetOwnerPrvt(aVariaveis[nX], NIL )
+		//Manter o legado
+		cRet	+= aVariaveis[nX]
+		If nX <> len(aVariaveis)
+			cRet	+= ','
+		EndIf
+	Next
+	
+	//Pelo menos estas duas variáveis podem ser inicializadas aqui, pois, as demais são opcionais
+	aGrupos			:= {}
+	aTotalizadores	:= {}
+	aGrpEspacos		:= {}
+	aTotCol			:= {}
+	aImpMesmLin		:= {}
+	aGrpQuebPag		:= {}
+	aGrpLinAnt		:= {}
+	aGrpLinDep		:= {}
+	aTotLinAnt		:= {}
+	aTotLinDep		:= {}
+
+	cGrpLinAnt		:= ''
+	cGrpLinDep		:= ''
+	cTotLinAnt		:= ''
+	cTotLinDep		:= ''
+	
+	nEspGrp			:= FwSuperGetMV('MX_ESPGRP',.F.,3) //Espaçamentos entre os niveis de agrupamento
+
+Return cRet
+
+//-------------------------------------------------------------------------------------------------
+User Function CXAjudaAgrupa();
+					AS Character
+
+Return U_CXReadFile( U_CXArqCst('AjudaAgrupa.txt','CX') )
+
+//#############################################################################
+//##+==========+=============+======+==================+======+=============+##
+//##|Programa  | CXImpAgrupa |Autor |Cirilo Rocha      | Data | 21/05/2012  |##
+//##+==========+=============+======+==================+======+=============+##
+//##|Desc.     | Rotina utilizada para impressao usando as informacoes do   |##
+//##|          | CXAgrupar()                                                |##
+//##+==========+===========+================================================+##
+//##|   DATA   |Programador| Manutencao efetuada                            |##
+//##+==========+===========+================================================+##
+//##| 25/08/15 | Cirilo R. | Pequena melhoria na impressao do cabecalho     |##
+//##| 21/03/17 | Cirilo R. | Ajuste na regua de processamento               |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+==========+===========+================================================+##
+//#############################################################################
+User Function CXImpAgrupa(	cAlias		,; 	//01 Alias para impressao
+							bPosPro		,; 	//02 Bloco a ser executado apos a impressao de cada linha do detalhe
+							cFltAdv		,; 	//03 Filtro em advpl para pular registros (executado antes da impressao do detalhe)
+							nEspDet		,; 	//04 Espacamento para iniciar a impressao dos detalhes
+							lPulaPos	,; 	//05 Indica que o pos-processamento ja foi executado 1 vez, entao so deve executar a partir da segunda linha
+							nTpRegua	,; 	//06 Tipo de regua de processamento (se houver)
+							nExpor		,; 	//07 Opcao de exportacao do relatorio (excel, pdf, etc.)
+							lJob		,; 	//08 Se a impressao e' a partir de um job no servidor
+							lMail		,; 	//09 Se envia o relatorio por email
+							aMail		,; 	//10 Parametros do email para envio
+							lRetPosPro	,; 	//11 Retorno inicial do pos-processamento (se usado)
+							bPosImp		,; 	//12 Bloco para ser execado apos a impressao dos detalhes, Formato {|nLin,nCol,cAlias| funcao() } deve retornar o nLin
+							lImpDet		);	//13 Se imprime os detalhes
+								AS Logical
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local aHdr				AS Array
+	Local aPosicoes			AS Array
+//	Local nPos				AS Numeric
+	Local nX                AS Numeric
+	Local nPosAnt           AS Numeric
+	Local nPosicao          AS Numeric
+//	Local cStr				AS Character
+	Local cFileTmp			AS Character
+	Local cCabec_           AS Character
+	Local aCabec_			AS Array
+	Local lCabecAgr			AS Logical
+	Local lExcel			AS Logical
+	Local lVazio			AS Logical
+	Local oAreaBkp			AS Object
+	Local unRetPosPro		AS Variant //Numeric
+	Local cTemp				AS Character
+	Local nLenGrpCpo		AS Numeric
+	Local lRet				AS Logical
+	Local lbPosPro			AS Logical
+	Local lbPosImp			AS Logical
+	Local lPrimeira			AS Logical
+
+	Local cPath				AS Character
+	Local cArquivo			AS Character
+
+	Private bImpCabecDet	AS CodeBlock
+	
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType  0	VAR cAlias		  		AS Character				Optional Default NIL
+	ParamType  1	VAR bPosPro		 	  	AS Block					Optional Default NIL //{|| }
+	ParamType  2	VAR cFltAdv				AS Character				Optional Default ''
+	ParamType  3	VAR nEspDet		  		AS Numeric					Optional Default NIL
+	ParamType  4	VAR lPulaPos	 	  	AS Logical					Optional Default .F.
+	ParamType  5	VAR nTpRegua			AS Numeric					Optional Default nRG_PROCESSA
+	ParamType  6	VAR nExpor		  		AS Numeric					Optional Default NIL
+	ParamType  7	VAR lJob		 	  	AS Logical					Optional Default .F.
+	ParamType  8	VAR lMail				AS Logical					Optional Default .F.
+	ParamType  9	VAR aMail		  		AS Array					Optional Default {}
+	ParamType 10	VAR lRetPosPro	 	  	AS Logical					Optional Default .T.
+	ParamType 11	VAR bPosImp				AS Block					Optional Default NIL //{|nLin,nCol,cAlias| nLin }
+    ParamType 12	VAR lImpDet				AS Logical					Optional Default .T.
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	If Type('aGrupos') == 'A'
+		nGrpTam	:= Len(aGrupos)
+	Else
+		nGrpTam	:= 0
+	EndIf
+
+	lCabecAgr	:= ( nGrpTam > 0 )
+	lVazio		:= .T.
+	lRet		:= .T.
+	cArquivo	:= ''
+	lbPosPro	:= ( ValType(bPosPro) == 'B' )
+	lbPosImp	:= ( ValType(bPosImp) == 'B' )
+
+	If lJob
+		nTpRegua	:= nRG_SEMREGUA
+	EndIf
+
+	//-------------------------------------------------------------------------------------------------
+
+	//+----------------------------------+
+	//| Se exporta para Excel            |
+	//+----------------------------------+
+	If ValType(nExpor) <> 'N'
+		If Type('nExportar') == 'N'
+			nExpor	:= nExportar
+		Else
+			nExpor	:= nNormal
+		EndIf
+	EndIf
+	lExcel		:= ( nExpor == nExcel )
+
+	//-------------------------------------------------------------------------------------------------
+
+	//Se por email forca exportar para PDF ou HTML
+	If lMail
+		If 	nExpor <> nPDF .And. ;
+			nExpor <> nHTML
+
+			U_CXApMsg(	U_CXTxtMsg()+'Formato para exportação inválido ('+StrZero(nExpor,2)+').'+CRLF+;
+						'Precisa ser PDF ou HTML.',nMsg_Stop,lJob)
+			Return .F.
+		EndIf
+	EndIf
+
+	//-------------------------------------------------------------------------------------------------
+
+	//Inicializa variavel nEspDetalhe
+	If ValType(nEspDet) == 'N'
+		nEspDetalhe	:= nEspDet
+	EndIf
+
+	//-------------------------------------------------------------------------------------------------
+
+	//Valida dados do email ou solicita ao usuario
+	If lMail
+		//Pergunta parametros para o usario se nao foi passado automatico
+		If len(aMail) == 0
+			If lJob
+				U_CXApMsg(U_CXTxtMsg()+'Envio de email via Job mas sem parametros para envio.',nMsg_Stop,lJob)
+				Return .F.
+			Else
+				//Mostra mensagem pedindo parametros para envio
+				aMail	:= DadosEmail()
+			EndIf
+		EndIf
+	EndIf
+
+	//Valida dados para envio do email
+	If 	lMail .And. ;
+		Len(aMail) == 0
+
+		Return .F.
+	EndIf
+
+	//-------------------------------------------------------------------------------------------------
+
+	nLenGrpCpo	:= Len(aGrpCpos)
+
+	//+----------------------------------+
+	//| Exportar para Excel/BrOffice/PDF |
+	//+----------------------------------+
+	If nExpor <> nNormal
+		//Cria o arquivo temporario para impressao em Excel
+		If ValType(cArqTrab) == 'U'
+
+			aHdr			:= {}
+
+			//+------------------------------------+
+			//| aHdr	 =   [1] cTitulo           |
+			//| 		  	 [2] cMascara          |
+			//| 			 [3] cContexto         |
+			//| 		     [4] cInicializador    |
+			//|              [5] cCombo            |
+			//+------------------------------------+
+
+			//Preenche pelos Agrupamentos
+			For nX := 1 to nGrpTam
+				aAdd(aHdr,{' ','@','R',,.F.})
+			Next
+
+			//Preenche pelos Campos
+			For nX := 1 to nLenGrpCpo
+				aAdd(aHdr,{aGrpCpos[nX][nGCP_TITULO],'@','R',,.F.})
+			Next
+
+			//Se vazio pelo menos 1 coluna
+			If Len(aHdr) == 0
+				aAdd(aHdr,{' ','@','R',,.F.})
+			EndIf
+
+			aAdd(aHdr,{' ','@','R',,.F.})
+
+			//Se linha separadora
+			aAdd(aHdr,{' ','@','R',,.F.})
+
+			cArqTrab	:= U_CXArqExcel(nLenGrpCpo+nGrpTam)
+		EndIf
+	EndIf
+
+	//-------------------------------------------------------------------------------------------------
+	//+-----------------------------------------+
+	//| Preenche dados para cabecalho aCabecDet |
+	//+-----------------------------------------+
+	cCabec_		:= ''
+	aCabec_		:= {}
+	nPosicao	:= 0
+	For nX := 1 to nLenGrpCpo
+		cTemp	:= U_CXAjustaStr(aGrpCpos[nX][nGCP_TITULO]	,;	//01
+								 aGrpCpos[nX][nGCP_ALINHA]	,;	//02
+								 aGrpCpos[nX][nGCP_TAMANHO]	) 	//03
+
+		//Se nao existe agrupamento imprime no cabecalho do relatorio
+		aAdd(aCabec_,Array(nCBD_TAMARR))
+		aTail(aCabec_)[nCBD_POSICAO]:= nPosicao
+		aTail(aCabec_)[nCBD_TAMANHO]:= aGrpCpos[nX][nGCP_TAMANHO]
+		aTail(aCabec_)[nCBD_ALINHA]	:= aGrpCpos[nX][nGCP_ALINHA]
+		aTail(aCabec_)[nCBD_TITULO]	:= cTemp
+
+		cCabec_  += (cTemp + Space(nSepara))
+
+		nPosicao += aGrpCpos[nX][nGCP_TAMANHO] + nSepara
+	Next
+
+	//Se existe agrupamento ou esta exportando
+	If 	nGrpTam > 0 .Or. ;
+		nExpor <> nNormal
+
+		//Se foi criado os cabecalhos
+		If 	Empty(cCabecDet) .And. ;
+			.Not. (ValType(aCabecDet) == 'A' .And. len(aCabecDet) > 0) .And. ;
+			lImpDet
+
+			aCabecDet	:= @aCabec_
+		EndIf
+	Else
+		If Empty(Cabec1)
+			Cabec1	:= cCabec_
+		ElseIf Empty(Cabec2)
+			Cabec2	:= cCabec_
+		ElseIf Empty(Cabec2)
+			Cabec2	:= cCabec_
+		Else //Se tudo ocupado usa o Cabec3
+			Cabec3	:= cCabec_
+		EndIf
+	EndIf
+
+	//Cabecalho do detalhamento
+	If 	nExpor <> nExcel .And. ; //Se excel/broffice nao tem cabecalho extra no detalhamento
+		nExpor <> nBrOffice
+
+		bImpCabecDet	:= {|nLin,nExp| ImpCabecDet(nLin,nExp) }
+	EndIf
+
+	//-------------------------------------------------------------------------------------------------
+	//lnLastKey		:= ( ValType(nLastKey)	== 'N')
+	If ValType(nLastKey) <>  'N'
+		nLastKey	:= 0
+	EndIf
+
+	//+----------------------------------+
+	//| Laco para impressao do relatorio |
+	//+----------------------------------+
+	lPrimeira	:= .T.
+	While (cAlias)->(!Eof())
+
+		U_CXIncRegua(nTpRegua,,'Imprimindo...')
+
+		//+---------------------------------------------------------------------+
+		//| Verifica o cancelamento pelo usuario...                             |
+		//+---------------------------------------------------------------------+
+		If 	lAbortPrint .Or. ;
+			nLastKey == 27
+//			( lnLastKey .And. nLastKey == 27 )
+//			( Type('nLastKey') == 'N' .And. nLastKey == 27 )
+
+//		  	@nLin,00 PSAY "*** CANCELADO PELO OPERADOR ***"
+		  	U_CXSay(nLin++,00,"*** CANCELADO PELO OPERADOR ***",,,nExpor,1)
+		  	Return .F.
+		Endif
+
+		//Filtra os registros com o filtro do usuario
+		If 	.Not. Empty(cFltAdv) .And. ;
+			.Not. ( &(cFltAdv) )
+
+			(cAlias)->(dbSkip())
+			Loop
+		EndIf
+
+		//Faz o pos-processamento
+		If 	.Not. lPulaPos .And. ;
+			lbPosPro		//Otimizacao
+
+			oAreaBkp		:= tCtrlAlias():GetArea({cAlias},.T.,.T.)
+				lRetPosPro	:= Eval ( bPosPro, cAlias )
+			oAreaBkp:RestArea()		//Restaura area
+			oAreaBkp:Destroy()
+			FWFreeVar(oAreaBkp)
+
+		//Pula a primeira vez do PosProc
+		Else
+			lPulaPos := .F.
+		EndIf
+
+		//Pula conforme pos-processamento
+		If 	ValType(lRetPosPro) == 'L' .And. ;
+			.Not. lRetPosPro
+
+			(cAlias)->(dbSkip())
+			Loop
+		EndIf
+
+		lVazio	:= .F.
+
+	  	//--------------------------------------------------------------------------------------//
+		//Chamada a funcao Agrupar dentro do laco                                               //
+	  	//--------------------------------------------------------------------------------------//
+	  	nLin := U_CXAgrupar(nLin,/*lTotalizar*/,/*lTotalGeral*/,nExpor)
+
+		//--------------------------------------------------------------------------------------//
+		//Preenche array com as posicoes dos campos aPosicoes                                   //
+		//--------------------------------------------------------------------------------------//
+		If lPrimeira	//Precisa ser aqui apos o CXAgrupar
+
+			aPosicoes	:= {}
+			nPosicao	:= nEspDetalhe
+			lPrimeira	:= .F.
+
+			For nX := 1 to nLenGrpCpo
+				aAdd(aPosicoes,nPosicao)
+				nPosicao += aGrpCpos[nX][nGCP_TAMANHO] + nSepara
+			Next
+
+		EndIf
+
+		//--------------------------------------------------------------------------------------//
+		// Preenche array com as posicoes dos totalizadores com base no aTotCol e aGrpCpos      //
+		//--------------------------------------------------------------------------------------//
+		//If 	( ValType(aTotEspacos) <> 'A' .Or. Len(aTotEspacos) == 0 )	.And. ;	//Precisa ser aqui apos o CXAgrupar
+		//	ValType(aTotCol) == 'A'
+		If  ( .Not. laTotEspacos .Or. Len(aTotEspacos) == 0 ) //.And. ;
+			//laTotCol
+			
+			aTotEspacos		:= {}
+
+			nPosAnt	:= 0
+			For nX := 1 to len(aTotCol)
+				If aTotCol[nX] <= len(aPosicoes)
+					nPosicao	:= aPosicoes[aTotCol[nX]]-nPosAnt
+					If nX > 1
+						nPosicao -= aGrpCpos[aTotCol[nX-1]][nGCP_TAMANHO]
+					EndIf
+					aAdd(aTotEspacos,nPosicao)
+					nPosAnt	:= aPosicoes[aTotCol[nX]] 						//Ultima posicao
+				EndIf
+			Next
+
+		EndIf
+		
+	  	//--------------------------------------------------------------------------------------//
+		// Imprime o detalhamento do relatorio                                                  //
+		//--------------------------------------------------------------------------------------//
+//	  	cStr 		:= ''
+
+		If lImpDet
+			For nX := 1 to nLenGrpCpo
+				//                             bloco           conteudo
+				U_CXSay(nLin															,;	//01 nLinha (def nLin)
+						aPosicoes[nX]													,;	//02 nCol
+						Eval( aGrpCpos[nX][nGCP_MASCARA] , &(aGrpCpos[nX][nGCP_CAMPO]) ),;	//03 cString
+						aGrpCpos[nX][nGCP_ALINHA]										,;	//04 cAlin	(def E)
+						aGrpCpos[nX][nGCP_TAMANHO]										,;	//05 nTamanho (def Len(string))
+						nExpor															,;	//06 nExpor
+						nGrpTam+nX														,;	//07 nNivel (def 1)
+						/*cTipo*/														,;	//08 cTipo (def D)
+						/*lLinha*/														,;	//09 lLinha (def .F.)
+						bImpCabecDet													) 	//10 bPosCabec
+			Next
+			nLin++
+		EndIf
+
+		//+-------------------------+
+		//| Faz o pos-processamento |
+		//+-------------------------+
+		If lbPosImp	//Otimizacao
+
+			oAreaBkp	:= tCtrlAlias():GetArea({cAlias},.T.,.T.)
+
+				unRetPosPro	:= Eval(bPosImp,nLin,aPosicoes[1],cAlias)
+				If ValType(unRetPosPro) == "N"
+					nLin	:= unRetPosPro
+				EndIf
+
+			oAreaBkp:RestArea()		//Restaura area
+			oAreaBkp:Destroy()
+			FWFreeVar(oAreaBkp)
+
+		EndIf
+
+	  	(cAlias)->(dbSkip()) // Avanca o ponteiro do registro no arquivo
+
+	EndDo
+
+	//---------------------------------------------------------------------------------------//
+	// Chamada a funcao Agrupar fora do laco para impressao dos totais no final do relatorio //
+	//---------------------------------------------------------------------------------------//
+	If .Not. lVazio
+
+		nLin := U_CXAgrupar(nLin,.T.,.T.,nExpor)
+
+		//Restaura variavel do numero da pagina
+		M_PAG	:= 01
+
+		If 	nExpor == nExcel .Or. ;
+			nExpor == nBrOffice
+
+			U_CXSetRegua(nTpRegua,0)
+			U_CXIncRegua(nTpRegua,,'Exportando p/ planilha...',.Not. lJob)
+			lRet	:= U_CXExpExcel(cArqTrab,/*aStruct*/,aHdr,lExcel,/*aCabec*/,/*aHeader*/,.Not. lCabecAgr)
+			
+			//Limpa arquivos temporarios -------------------------------------------------
+			cFileTmp	:= (cArqTrab+GetDBExtension())
+			If File(cFileTmp)
+				(cArqTrab)->(dbCloseArea())
+				fErase(cFileTmp)
+			EndIf
+
+		//Gravar em PDF
+		ElseIf nExpor == nPDF
+
+			//Se via Job ou por email salva no servidor
+			If 	lJob .Or. ;
+				lMail
+
+				cArquivo	:= AllTrim(nomeprog)+'-'+DtoS(Date())+'-'+StrTran(Time(),':','')+'.pdf'
+
+				cPath		:= cPathDest
+			Else
+				cPath		:= GetTempPath() //Se for cliente gera no diretorio temporario
+			EndIf
+
+			//Salva o arquivo PDF
+			If U_CXGeraPDF(	cArquivo		,;	//01
+							cPath			,;	//02
+							cArqTrab		,;	//03
+							aGrpCpos		,;	//04
+							nEspDetalhe		,;	//05
+							(lJob.Or.lMail)	,;	//06
+							.Not. lMail		,;	//07
+							nTpRegua		) 	//08
+
+				//Envia o email
+				If lMail
+					U_CXSetRegua(nTpRegua,0)
+					U_CXIncRegua(nTpRegua,,'Enviando Email...',.Not. lJob)
+
+					lRet	:= EnviaEmail(aMail,{cPath+cArquivo},lJob)
+				EndIf
+
+			Else
+				lRet	:= .F.
+			EndIf
+
+		ElseIf nExpor == nHTML
+
+		EndIf
+
+	//Vazio
+	Else
+
+		U_CXApMsg(U_CXTxtMsg()+'Arquivo vazio.',nMsg_Stop,lJob)
+		U_CXSay(100,001,'ARQUIVO VAZIO','E',,nExpor,1)
+
+	EndIf
+
+Return lRet
+
+//-------------------------------------------------------------------------------------------------
+// Salva arquivo PDF do relatorio
+//-------------------------------------------------------------------------------------------------
+User Function CXGeraPDF(cArqPDF		,; 	//01 Nome do arquivo a ser gerado
+						cPath		,; 	//02 Diretorio para gravacao do arquivo
+						cAlias		,; 	//03 Alias da tabela temporaria para impressao
+						aImpCpos	,; 	//04 Array com os dados dos campos para impressao
+						nEspDetalhe	,; 	//05 Espacamento para impressao dos detalhes
+						lInJob		,; 	//06 Se a execucao e' um job no servidor
+						lPreview 	,; 	//07 Gera o preview no final do processo
+						nTpRegua	);	//08 Tipo de regua de processamento (se houver)
+								AS Logical
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local cItem				AS Character
+
+	//Objeto com os tamanhos das fontes
+	Local oFontSize			AS Object
+	Local aCabec			AS Array
+	Local aAssina		    AS Array
+	Local cAssina			AS Character
+
+	Local cPDFArq			AS Character
+	Local cPDFDir			AS Character
+	Local cPDFDrv			AS Character
+
+//	Local cPathTemp			AS Character
+	Local nOrientation		AS Numeric
+
+	Local cStr				AS Character
+	Local nLin				AS Numeric
+	Local nX				AS Numeric
+	Local cEmpresa			AS Character
+	Local bMascara			AS CodeBlock
+//	Local nPosicao			AS Numeric
+	Local nGrpTam			AS Numeric
+	Local nTamanho			AS Numeric
+	Local lPrimeira			AS Logical
+
+	Local aStruct			AS Array
+
+	//---------------------------------------------------------------------------------------------
+
+	Private nPag			AS Numeric //Numero de paginas
+	Private lErro			AS Logical
+
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR cArqPDF		  	AS Character		Optional Default GetNextAlias()		//CriaTrab(NIL, .F.)
+	ParamType 1		VAR cPath		 	AS Character		Optional Default NIL
+	ParamType 2		VAR cAlias			AS Character		Optional Default NIL
+	ParamType 3		VAR aImpCpos	  	AS Array			Optional Default NIL
+	ParamType 4		VAR nEspDetalhe	 	AS Numeric			Optional Default 0
+	ParamType 5		VAR lInJob			AS Logical			Optional Default U_CXRotAuto(.T.) //IsBlind()	//Funcao executada sem interface (JOB/Server)
+	ParamType 6		VAR lPreview 	  	AS Logical			Optional Default .T.
+	ParamType 7		VAR nTpRegua	 	AS Numeric			Optional Default nRG_PROCESSA
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+
+	cMsg		:= '' //Variavel compartilha de mensagens de erro
+	nPag		:= 0 //Numero de paginas
+	lErro		:= .F.
+
+	aCabec		:= {}
+	aAssina		:= {}
+	
+	If Type('aGrupos') == 'A'
+		nGrpTam		:= Len(aGrupos)
+	Else
+		nGrpTam		:= 0
+	EndIf
+
+	//---------------------------------------------------------------------------------------------
+
+	If ValType(cPath) <> 'C'
+		If lInJob
+			cPath	:= cPathDest
+		Else
+			cPath	:= GetTempPath() //Se for cliente gera no diretorio temporario
+		EndIf
+	EndIf
+
+	//Valida a tabela temporaria
+	If ValType(cAlias) <> 'C'
+
+		If ValType(cArqTrab) == 'C'
+			cAlias	:= cArqTrab
+		Else
+			U_CXApMsg(U_CXTxtMsg()+'Alias não informado para geração do arquivo PDF.',nMsg_Stop,lInJob)
+			Return .F.
+		EndIf
+
+	EndIf
+
+	If lInJob
+		//Se a execucao e' via job desabilita preview
+		lPreview	:= .F.
+
+		//Sem regua de progressao
+		nTpRegua	:= nRG_SEMREGUA
+	EndIf
+
+	//---------------------------------------------------------------------------------------------
+
+	U_CXSetRegua(nTpRegua,0)
+	U_CXIncRegua(nTpRegua,,'Gerando PDF...',.Not. lJob)
+
+	//Pega a orientacao da variavel nTipo padrao dos relatorios TXT
+	If nTipo == nRETRATO
+		nOrientation	:= nPD_RETRATO
+	Else
+		nOrientation	:= nPD_PAISAGEM
+	EndIf
+
+	//-------------------------------------------------------------------------------------------------
+
+	//Se estrutura de campos não foi passada obtém da tabela
+	If ValType(aImpCpos) <> 'A'
+
+		If Type('aGrpCpos') == 'A'
+			aImpCpos	:= aGrpCpos
+		Else
+			aImpCpos	:= {}
+			//+---------------------------------+
+			//| aStruct = [1] cNomeCampo   		|
+			//|	          [2] cTipo        		|
+			//|			  		c=caractere   	|
+			//|			  		n=numerico    	|
+			//|			  		l=logico      	|
+			//|			  		m=memo        	|
+			//|			  [3] nTamanho     		|
+			//|			  [4] nDecimal     		|
+			//+---------------------------------+
+			aStruct	:= (cAlias)->(dbStruct())
+			For nX := 1 to len(aStruct)
+
+				//+-------------------------------+
+				//| aGrpCpos =	[1] = cCampo      |
+				//|    			[2] = nTamanho    |
+				//|    			[3] = bMascara    |
+				//|    			[4] = cAlinha     |
+				//|    			[5] = cTitulo     |
+				//+-------------------------------+
+				If 	aStruct[nX][nST_CAMPO] <> 'TRB_CXTIPO' .And. ;
+					aStruct[nX][nST_CAMPO] <> 'TRB_CXLINH' .And. ;
+					Left(aStruct[nX][nST_CAMPO],5) <> 'CXCOL'
+
+					nTamanho	:= aStruct[nX][nST_TAMANHO]
+					If aStruct[nX][nST_TIPO] == 'M'
+						//If Type('limite') == 'N'
+						//	nTamanho	:= limite
+						//Else
+							nTamanho	:= 9999
+						//EndIf
+					EndIf
+					aAdd(aImpCpos,{	aStruct[nX][nST_CAMPO]	,;	//01
+									nTamanho				,;	//02
+									bMascara				,;	//03
+									'E'						,;	//04
+									''						})	//05
+				EndIf
+
+			Next
+		EndIf
+	EndIf
+
+	//-------------------------------------------------------------------------------------------------
+
+	//Cria diretorio temporario se nao existir
+	If .Not. ExistDir(cPathDest)
+
+		If MakeDir(cPathDest) <> 0
+			U_CXApMsg(	U_CXTxtMsg()+'Falha ao criar o diretorio temporario para geração do PDF: '+CRLF+;
+						cPathDest,nMsg_Alert,lInJob)
+			Return .F.
+		EndIf
+
+	EndIf
+
+	//-------------------------------------------------------------------------------------------------
+
+	//Valida diretorio e arquivo de salvamento
+	If lInJob
+
+		If Empty(cArqPDF)
+			U_CXApMsg(U_CXTxtMsg()+'ERRO: Arquivo para salvamento no servidor não informado.',nMsg_Alert,lInJob)
+			Return .F.
+		ElseIf Empty(cPath)
+			U_CXApMsg(U_CXTxtMsg()+'ERRO: Diretório para salvamento no servidor não informado.',nMsg_Alert,lInJob)
+			Return .F.
+		Else
+			//Cria diretorio de destino se nao existir
+			If .Not. ExistDir(cPath)
+				If MakeDir(cPath) <> 0
+					U_CXApMsg(	U_CXTxtMsg()+'Falha ao criar o diretorio de destino para geração do PDF: '+CRLF+;
+								cPath,nMsg_Alert,lInJob)
+					Return .F.
+				EndIf
+			EndIf
+		EndIf
+
+	Else
+
+		//Se nao informado solicita ao usuario
+		If Empty(cArqPDF)
+			cPDFArq	:= U_cGetFile(  "PDF | *.pdf"										,;	//01
+								    U_CXTxtMsg()+"Selecione o local para salvar o PDF"	,;	//02
+								    1													,;	//03
+								    "C:\"												,;	//04
+								    .T.													,;	//05
+								    GETF_LOCALHARD+GETF_NETWORKDRIVE+GETF_LOCALFLOPPY+GETF_OVERWRITEPROMPT,;	//06
+								    .F.													)	//07
+			If Empty(cPDFArq)
+				FwAlertWarning('Erro! Nenhum arquivo selecionado para gravação.',U_CXTxtMsg(,,.T.))
+				Return .F.
+			Else
+				SplitPath( cPDFArq, @cPDFDrv, @cPDFDir, @cArqPDF, /*cExt*/ )
+				cPath	:= cPDFDrv+cPDFDir
+			EndIf
+		EndIf
+
+	EndIf
+
+	//Coloca a extensao no arquivo
+	cArqPDF	:= FileNoExt(cArqPDF)+'.pdf'
+
+	//-------------------------------------------------------------------------------------------------
+
+	//Obtem o cabecalho do arquivo
+	(cAlias)->(dbGoTop())
+	While (cAlias)->(!EOF())
+
+		If (cAlias)->TRB_CXTIPO == 'C'
+			If (cAlias)->TRB_CXLINH
+				If ValType(aTail(aCabec)) <> 'L'
+					aAdd(aCabec,.T.)
+				EndIf
+			ElseIf .Not. Empty((cAlias)->CAMPO01)
+				aAdd(aCabec,RTrim((cAlias)->CAMPO01))
+			EndIf
+		Else
+			Exit
+		EndIf
+
+		(cAlias)->(dbSkip())
+	EndDo
+
+	//-------------------------------------------------------------------------------------------------
+	If Type('titulo') <> 'C'
+		titulo	:= 'SEM TÍTULO'
+	EndIf
+
+	If Type('nomeprog') <> 'C'
+		nomeprog	:= 'CXAgrupa'
+	EndIf
+
+	//Se nao encontrar monta o cabec
+	If Len(aCabec) == 0
+
+		FWSM0Util():setSM0PositionBycFilAnt()
+
+		cEmpresa	:= AllTrim(SM0->M0_NOME)+' - '+AllTrim(SM0->M0_FILIAL)
+
+		aAdd(aCabec,'TÍTULO..: '+titulo)
+		aAdd(aCabec,'PROGRAMA: '+nomeprog+' - '+DtoC(Date())+' - '+Time())
+		aAdd(aCabec,'EMPRESA.: '+cEmpAnt+'-'+cFilAnt+' - '+cEmpresa)
+
+		If .Not. Empty(Cabec1+Cabec2)
+			aAdd(aCabec,.T.)
+		EndIf
+
+		If .Not. Empty(Cabec1)
+			aAdd(aCabec,Cabec1)
+		EndIf
+
+		If .Not. Empty(Cabec2)
+			aAdd(aCabec,Cabec2)
+		EndIf
+
+		If 	Type('Cabec3') == 'C' .And. ;
+			.Not. Empty(Cabec3)
+
+			aAdd(aCabec,Cabec3)
+		EndIf
+
+	EndIf
+
+	//COLOQUE AQUI AS VALIDACOES E PRE-PROCESSAMENTOS
+
+	//---------------------------------------------------------------------------------------------
+
+	//+---------------------------+
+	//| Variaveis de configuracao |
+	//+---------------------------+
+	//Versao 2.33
+	Private oCfgRel			AS Object // Objeto para configuracao de relatorios
+
+	//---------------------------------------------------------------------------------------------
+
+	oCfgRel	:=	tCXRelGraf():New() //Cria objeto de configuracao
+
+	oCfgRel:cNomeProg 		:= nomeprog					// Nome do fonte do relatorio
+	oCfgRel:cTitulo 		:= titulo					// Titulo do relatorio para impressao
+//	oCfgRel:cPerg			:= oCfgRel:cNomeProg		// cPerg se for utilizado
+//	oCfgRel:aPerg			:= aPerg					// Dados das perguntas
+//	oCfgRel:bPerg			:= bPerg					// Bloco de codigo para o botao parametros
+//	oCfgRel:aOrder			:= aOrdem					// Array com as ordens de impressao do relatorio
+//	oCfgRel:nOrder			:= nOrdem					// Variavel que define a ordem de impressao
+	oCfgRel:lInJob	  		:= lInJob				  	// Indica se a impressao e' vai JOB (NO SERVIDOR)
+//	oCfgRel:lAdjustToLegacy	:= .F. 						// Ajuste para utilizar as mesmas coordenadas da classe TMSPrinter (COMPATIBILIDADE)
+
+//	oCfgRel:lRaw
+//	oCfgRel:lTReport		:= .T.						// Indica que a classe foi chamada pelo TReport.
+//	oCfgRel:lPDFAsPNG		:= .T.						// Indica que será gerado o PDF no formato PNG
+//	oCfgRel:lDisabeSetup	:= .F.						// Inibe a tela de setup na abertua do objeto (Default .T.)
+//	oCfgRel:cDirPrint		:= FwSuperGetMV('MV_RELT')	// Diretorio de impressao temporario (OPCIONAL)
+
+//---Parametros para impressao em PDF NAO PRECISA SETAR OS PARAMETROS DE TIPO DE IMPRESSAO E DESTINACAO
+	oCfgRel:cArqRel			:= cArqPDF //Upper(cNomeProg)+'_'+DtoS(Date())+'_'+StrTran(Time(),':','') (OPCIONAL)
+	oCfgRel:cPathDest		:= cPath
+//	oCfgRel:lSetup   		:= .F. 						// Inibe tela de setup no inicio (Default .F.)
+//	oCfgRel:lPreview		:= .F.						// Desabilita o preview do PDF
+
+	//+------------------------------+
+	//| Flags do objeto FWPrintSetup |
+	//+------------------------------+
+//	oCfgRel:lIsTotvsPrinter	:= .T. // (OPCIONAL)
+//	oCfgRel:lDsOrientation	:= .T. // (OPCIONAL)
+//	oCfgRel:lDsPaperSize	:= .T. // (OPCIONAL)
+//	oCfgRel:lDsMargin		:= .T. // (OPCIONAL)
+//	oCfgRel:lDsDestination	:= .T. // (OPCIONAL)
+
+	oCfgRel:cDevice			:= "PDF" 		// (OPCIONAL)
+//	oCfgRel:nPrintType		:= IMP_SPOOL	// (OPCIONAL) //Informar este ou o acima
+//	oCfgRel:nDestination	:= AMB_CLIENT	// (OPCIONAL)
+	oCfgRel:nOrientation	:= nOrientation	// (OPCIONAL)
+//	oCfgRel:nPaperSize		:= U_CXConvPSize(DMPAPER_A4,'F') //Converte de FWMsPrinter p/ TMSPrinter // (OPCIONAL)
+	oCfgRel:aMargens		:= {20,20,20,20}
+
+	If .Not. oCfgRel:Inicializa(.T.) //Inicializa objeto
+		Return .F. //Usuario cancelou
+	EndIf
+//	nOrdem	:= oCfgRel:nOrder
+	//-----------------------------------------------------------------------------
+
+	//COLOQUE AQUI AS VARIAVEIS MV_PAR##
+	// nVias := MV_PAR01 por exemplo
+
+	//-----------------------------------------------------------------------------
+
+	//#####################################################################
+	//#     VARIAVEIS DE POSICIONAMENTO DA PAGINA (MARGENS, TAMANHOS)     #
+	//#####################################################################
+	//#                                                                   #
+	//# VARIAVEL PARA CONTROLE DE LINHAS                                  #
+	//# nLin = Posicao da linha para impressao                            #
+	//# nIncLin = Distancia entre linhas                                  #
+	//#                                                                   #
+	//# TAMANHOS DA PAGINA                                                #
+	//# nHP	= Tamanho horizontal da pagina (sem margens)                  #
+	//# nVP	= Tamanho vertical da pagina (sem margens)                    #
+	//#                                                                   #
+	//# MARGENS DA PAGINA                                                 #
+	//# nHM = Margem horizontal da pagina                                 #
+	//# nVM = Margem vertical da pagina                                   #
+	//#                                                                   #
+	//# nFH = Final horizontal 	(nHP-nHM)                                 #
+	//# nFV = Final vertical		(nVP-nVM)                             #
+	//#                                                                   #
+	//# nLP = Largura disponivel para impressao	(nFH-nHM) ou (nHP-2*nHM)  #
+	//# nAP = Altura  disponivel para impressao	(nFV-nVM) ou (nVP-2*nVM)  #
+	//#                                                                   #
+	//#####################################################################
+
+	//-------------------------------------------------------------------------------------------------
+
+	//Se em PDF no cliente -> forca a visualizacao
+	If 	oRpt:nDevice == IMP_PDF .And. ;
+		.Not. oRpt:lServer	//Impressao no cliente
+
+		oRpt:lViewPDF := lPreview
+	EndIf
+
+	//+-------------------------------------------------------------+
+	//| Tamanho da fonte conforme orientacao e tamanho do relatorio |
+	//+-------------------------------------------------------------+
+	If oCfgRel:oStp:GetProperty(PD_ORIENTATION) == nPD_RETRATO
+		If tamanho == 'P'
+			nTamFont	:= nPAIS_P
+		ElseIf tamanho == 'M'
+			nTamFont	:= nPAIS_M
+		ElseIf tamanho == 'G'
+			nTamFont	:= nPAIS_G
+		EndIf
+	Else
+		If tamanho == 'P'
+			nTamFont	:= nRETR_P
+		ElseIf tamanho == 'M'
+			nTamFont	:= nRETR_M
+		ElseIf tamanho == 'G'
+			nTamFont	:= nRETR_G
+		EndIf
+	EndIf
+
+	//-------------------------------------------------------------------------------------------------
+
+	//+-----------------------------------------------------------+
+	//| Inicializa os outros tamanhos de fonte, é necessário para |
+	//| que sejam salvos os tamanhos das fontes para impressão    |
+	//| via Job. O objeto FWFontSize não roda via console         |
+	//+-----------------------------------------------------------+
+	If 	.Not. lInJob .And. ;	//Otimizacão
+		( ;
+			( .Not. ( cDriverTmp $ 'FWTMP/TOPCONN' )  .And. .Not. MsFile( FWFontCst():NomeTab()+GetDBExtension(),,cDriverTmp) ) .Or. ;
+			( cDriverTmp $ 'FWTMP/TOPCONN'  .And. .Not. TCCanOpen(FWFontCst():NomeTab()) ) ;
+		)
+		oFontSize := FWFontCst():New(.F.)
+
+		oFnt	:= tFont():New("Courier new",,nPAIS_P,,.F.,,,,.F.,.F.)
+		oFontSize:getTamTxt('M',oFnt)
+		FWFreeVar(oFnt)
+
+		oFnt	:= tFont():New("Courier new",,nPAIS_M,,.F.,,,,.F.,.F.)
+		oFontSize:getTamTxt('M',oFnt)
+		FWFreeVar(oFnt)
+
+		oFnt	:= tFont():New("Courier new",,nPAIS_M,,.F.,,,,.F.,.F.)
+		oFontSize:getTamTxt('M',oFnt)
+		FWFreeVar(oFnt)
+
+		oFnt	:= tFont():New("Courier new",,nRETR_P,,.F.,,,,.F.,.F.)
+		oFontSize:getTamTxt('M',oFnt)
+		FWFreeVar(oFnt)
+
+		oFnt	:= tFont():New("Courier new",,nRETR_M,,.F.,,,,.F.,.F.)
+		oFontSize:getTamTxt('M',oFnt)
+		FWFreeVar(oFnt)
+
+		oFnt	:= tFont():New("Courier new",,nRETR_M,,.F.,,,,.F.,.F.)
+		oFontSize:getTamTxt('M',oFnt)
+		FWFreeVar(oFnt)
+		
+		oFontSize:Destroy()
+		FWFreeVar(oFontSize)		
+	EndIf
+	//-------------------------------------------------------------------------------------------------
+	//+----------------------+
+	//| Inicializa variaveis |
+	//+----------------------+
+	oRpt:nHM	:= 020
+	oRpt:nVM	:= 020
+
+	oRpt:CXAreaImp() //Atualizadas dimensoes da impressao
+
+	oFnt		:= tFont():New("Courier new",nTamFont,nTamFont,,.F.,,,,.F.,.F.)
+	oFntN  		:= tFont():New("Courier new",nTamFont,nTamFont,,.T.,,,,.F.,.F.)
+
+	//Seta fonte do relatorio
+	oRpt:SetFont(@oFnt)
+
+	//Seta a altura entre linhas
+	nIncLin		:= nAP / (U_CXLinPg()+1) //Espaco disponivel / quantidade de linhas
+
+	nTamChar	:= (nLP / limite)
+
+	nLin 		:= (nIncLin * 10)+nFV	//Forca quebra de pagina!
+	lPrimeira	:= .T.
+	
+	U_CXSetRegua(nTpRegua,(cAlias)->(RecCount()))
+
+	//-------------------------------------------------------------------------------------------------
+	(cAlias)->(dbGoTop())
+	While (cAlias)->(!EOF())
+
+		U_CXIncRegua(nTpRegua,,'Gerando PDF...')
+
+		/* PARA DEBUG
+		If	nLin == NIL
+			cStr	:= '123456789*123456789*123456789*123456789*123456789*123456789*123456789*123456789*123456789*123456789*123456789*123456789*123456789*123456789*123456789*123456789*123456789*123456789*123456789*123456789*123456789*123456789*'
+			SayCst(	nVM							,;	//01
+					nHM 						,;	//02
+					cStr 						,;	//03
+					oFnt 						) 	//04
+
+			cStr	:= '        10        20        30        40        50        60        70        80        90       100       110       120       130       140       150       160       170       180       190       200       210       220'
+			SayCst(	nVM+nIncLin				,;	//01
+					nHM 					,;	//02
+					cStr 					,;	//03
+					oFnt 					) 	//04
+		EndIf
+		*/
+
+		//Quebra de pagina
+		If	nLin + (nIncLin * 2) > nFV .Or. ;
+			(cAlias)->TRB_CXTIPO == 'P' //Forca nova pagina
+
+			//If ValType(nLin) == 'N'
+			If lPrimeira
+				lPrimeira	:= .F.
+			Else
+				Eval(oRpt:bRodape,nLin,{}) //Forca impressao do rodape
+			EndIf
+
+			nLin	:= CabecPDF(aCabec)  //Forca impressao do cabecalho
+
+			aAssina	:= {} //Limpa assinaturas apos a quebra de pagina
+		EndIf
+
+		//Quebra de pagina
+		If (cAlias)->TRB_CXTIPO == 'P'
+			//Ja tratado acima
+		ElseIf (cAlias)->TRB_CXTIPO == 'C' //Cabecalho
+			//Ja tratado
+		ElseIf (cAlias)->TRB_CXTIPO == 'S' //Assinatura
+			cAssina	:= Upper(AllTrim((cAlias)->CAMPO01))
+			If Rat('.BMP',cAssina) > 0
+				aAdd(aAssina,cAssina)
+			ElseIf len(cAssina) == 6 //Codigo de usuario
+				cAssina	:= U_CXGetAss(cAssina)
+				If .Not. Empty(cAssina)
+					aAdd(aAssina,cAssina)
+				EndIf
+			EndIf
+		//Imprime detalhamento
+		ElseIf 	(cAlias)->TRB_CXTIPO == 'A' .Or. ; 	//Agrupamento
+				(cAlias)->TRB_CXTIPO == 'T' .Or. ; 	//Totalizador
+				(cAlias)->TRB_CXTIPO == 'D' 		//Detalhamento
+
+			//Linha separadora
+			If (cAlias)->TRB_CXLINH
+				oRpt:Line(nLin-(nIncLin*0.3),nHM,nLin-(nIncLin*0.3),nFH,,cEspLin)
+			Else
+				For nX := 1 to len(aImpCpos) + nGrpTam
+					//Campo
+					cItem	:= StrZero(nX,2)
+//					cStr	:= RTrim(U_CXFieldGet('CAMPO'+cItem,cAlias))
+//					nCol	:= U_CXFieldGet('CXCOL'+cItem,cAlias)
+					cStr	:= (cAlias)->(RTrim(FieldGet(FieldPos('CAMPO'+cItem))))
+					nCol	:= (cAlias)->(FieldGet(FieldPos('CXCOL'+cItem)))
+
+					//Corta string se o tamanho estiver errado
+					If nX > nGrpTam
+						cStr	:= Left(cStr,aImpCpos[nX-nGrpTam][nGCP_TAMANHO])
+					EndIf
+
+					//Impressao
+					If .Not. Empty(cStr)
+						SayCst(	nLin	 				,;	//01
+								nHM + (nCol*nTamChar)	,;	//02 //nHM + (nPosicao*nTamChar)	,;
+								cStr	 				,;	//03
+								@oFnt					) 	//04
+					EndIf
+
+				Next
+			EndIf
+
+			nLin	+= nIncLin
+		Else
+			U_CXApMsg(	U_CXTxtMsg()+'Tipo ('+(cAlias)->TRB_CXTIPO+') de registro '+;
+						'inválido no arquivo para gerar PDF.',nMsg_Alert,lInJob)
+		EndIf
+
+		(cAlias)->(dbSkip())
+	EndDo
+
+	//-------------------------------------------------------------------------------------------------
+
+	Eval(oRpt:bRodape,nLin,aAssina) //Imprime o rodape
+
+	U_CXSetRegua(nTpRegua,0)
+	U_CXIncRegua(nTpRegua,,'Salvando PDF...',.Not. lJob)
+
+	//Visualiza ou salva o pdf
+	oRpt:Preview()
+	
+	//Destroi objeto
+	FWFreeVar(oRpt)
+	oRpt := Nil
+
+	//Destroi o objeto tCXRelGraf
+	FWFreeVar(oCfgRel)
+	oCfgRel	:= NIL
+
+	//Precisa aguardar alguns segundo para a geracao completa do arquivo PDF
+//	Sleep(3000)   //Desnecessario agora
+
+	//Limpa arquivos temporarios -------------------------------------------------
+	cFileTmp	:= (cAlias+GetDBExtension())
+	If File(cFileTmp)
+		(cAlias)->(dbCloseArea())
+		fErase(cFileTmp)
+	EndIf
+
+	//----------------------------------------------------------------------------
+
+	//Verifica se o arquivo foi gerado
+	If 	.Not. lErro .And. ;	//Erro ja tratado pelo CXMSPrinter
+		.Not. U_CXFile(cPath+cArqPDF,.F.)
+
+		cMsg	:= 	U_CXTxtMsg()+'Erro indeterminado. '+cMsg+CRLF+;
+					'Não foi gerado o arquivo PDF ou está vazio: '+CRLF+;
+					cPath+cArqPDF
+
+		U_CXApMsg(cMsg,nMsg_Alert,lInJob)
+		Return .F.
+
+	EndIf
+
+Return .T.
+
+//-------------------------------------------------------------------------------------------------
+// Impressao do cabecalho do relatorio em PDF
+//-------------------------------------------------------------------------------------------------
+Static Function CabecPDF(aCabec);	//01
+ 							AS Numeric
+
+	Local cLogo 			AS Character
+	Local nInicio			AS Numeric		//Posicao para impressao apos a logomarca
+	Local nTamCab			AS Numeric
+	Local nX				AS Numeric
+	Local nLinha			AS Numeric
+	Local nLinFim		    AS Numeric
+
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR aCabec  	  		AS Array
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	cLogo 	:= U_CXLogo()
+	nInicio	:= 3.2 * nIncLin + nHM //Posicao para impressao apos a logomarca
+	nTamCab	:= len(aCabec)
+
+	//---------------------------------------------------------------------------------------------
+
+	//Inicia nova pagina
+	oRpt:StartPage()
+
+	//Inicio da linha
+	nLinha	:= nVM
+
+	//Incrementa contador de paginas
+	nPag++
+
+	//---------------------------------------------------------------------------------------------
+	//+----------------------------------+
+	//| Inicio da impressao do cabecalho |
+	//+----------------------------------+
+
+	//Imprime logomarca
+	oRpt:SayBitmap(nLinha+002,nHM,cLogo, 2.9*nIncLin , 2.9*nIncLin )
+
+	//Imprime linhas separadoras
+	oRpt:Line(nLinha    ,nHM,nLinha    ,nFH,,cEspLin)
+	oRpt:Line(nLinha+001,nHM,nLinha+001,nFH,,cEspLin)
+
+	//---------------------------------------------------------------------------------------------
+	nLinFim	:= nLinha + (3*nIncLin)
+	nLinha	+= nIncLin
+
+	U_CXSayR(nLinha,nFH-005,'Página: '+StrZero(nPag,3),@oFntN,oRpt)
+
+	For nX := 1 to nTamCab
+		If ValType(aCabec[nX]) == 'C'
+			SayCst(nLinha, nInicio, aCabec[nX], @oFntN)
+			nLinha	+= nIncLin
+		ElseIf ValType(aCabec[nX]) == 'L' .And. ; 	//Linha separadora
+				nX <> 1 .And. ;						//Primeira linha
+				nX <> nTamCab 						//Ultima Linha
+
+			If nLinha > nLinFim //Se passou do logo imprime a partir do inicio da pagina
+				nInicio	:= nHM
+			EndIf
+
+			oRpt:Line(nLinha,nHM,nLinha,nFH,,cEspLin)
+			nLinha	+= nIncLin
+		EndIf
+	Next
+
+	oRpt:Line(nLinha-(nIncLin*0.5)    ,nHM,nLinha-(nIncLin*0.5)    ,nFH,,cEspLin)
+	oRpt:Line(nLinha-(nIncLin*0.5)+001,nHM,nLinha-(nIncLin*0.5)+001,nFH,,cEspLin)
+
+	nLinha	+= nIncLin
+
+Return nLinha
+
+//-------------------------------------------------------------------------------------------------
+// Funcao para enviar um email com o relatorio em PDF
+//-------------------------------------------------------------------------------------------------
+Static Function EnviaEmail(	aMail		,; // 01 - Dados para envio do email
+							aArquivos	,; // 02 - Arquivos que serao anexados a mensagem
+							lJob		); // 03 - Se a execucao e' um job no servidor
+								AS Logical
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local oMail				AS Object
+	Local oMailServer		AS Object
+	Local cMailUsr			AS Character
+	Local ucFrom		    AS Variant //Character
+	Local cTo		        AS Character
+	Local cCC		        AS Character
+	Local cBCC		        AS Character
+	Local ucTitMsg		    AS Variant //Character
+	Local ucMensag		    AS Variant //Character
+
+	Local nX				AS Integer
+	Local lErro				AS Logical
+
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR aMail  	  		AS Array
+	ParamType 1		VAR aArquivos  	  	AS Array					Optional Default {}
+	ParamType 2		VAR lJob 			AS Logical					Optional Default .F.
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	oMail			:= tMailMessage():New()
+	oMailServer	    := tEnviaEmail():New()
+	lErro			:= .F.
+
+	//Preenche a mensagem
+	oMail:Clear()
+
+	ucFrom	:= aMail[nML_FROM]
+	If 	ValType(ucFrom) <> 'C' .Or. ;
+		Empty(ucFrom)
+
+		cMailUsr	:= ''
+		If 	ValType(__cUserID) == 'C' .And. ;
+		 	.Not. Empty(__cUserID) .And. ;
+		 	__cUserID <> '000000'
+
+			cMailUsr		:= U_CXMailUsr() //AllTrim(UsrRetMail(__cUserID))
+		EndIf
+
+		If .Not. Empty(cMailUsr)
+			ucFrom	:= AllTrim(U_CXNmUsr())+' <'+cMailUsr+'>'
+			oMail:SetConfirmRead( .T. )
+		Else
+			ucFrom	:= 'Correio '+RTrim(SM0->M0_NOME)+' <'+FwSuperGetMV('MV_RELFROM')+'>'
+		EndIf
+	EndIf
+
+	cTo	:= aMail[nML_TO]
+
+	If len(aMail) >= nML_CC
+		cCC	:= aMail[nML_CC]
+	EndIf
+
+	If len(aMail) >= nML_CCO
+		cBCC	:= aMail[nML_CCO]
+	EndIf
+
+	If len(aMail) >= nML_MENSAG
+		ucMensag	:= aMail[nML_MENSAG]
+	EndIf
+
+	If 	ValType(ucMensag) <> 'C' .Or. ;
+		Empty(ucMensag)
+
+		ucMensag	:= 'Este é um email automático enviado pelo sistema Protheus da '+Alltrim(SM0->M0_NOME)+'<br>'
+		ucMensag	+= 'Nele consta o relatório '+Titulo+'<br><br>'
+		ucMensag	+= 'ID-REL '+cEmpAnt+'-'+cFilAnt+'-'+nomeprog
+	EndIf
+
+	If len(aMail) >= nML_TITULO
+		ucTitMsg	:= aMail[nML_TITULO]
+	EndIf
+
+	If ValType(ucTitMsg) <> 'C'
+		ucTitMsg	:= Titulo
+	EndIf
+
+	oMail:cFrom		:= ucFrom
+	oMail:cTo      	:= cTo
+	oMail:cCc 	   	:= cCC
+	oMail:cBcc     	:= cBCC
+	oMail:cSubject 	:= ucTitMsg
+	oMail:cBody    	:= ucMensag
+
+	//Anexa arquivos
+	For nX := 1 to len(aArquivos)
+		oMail:AttachFile(aArquivos[nX])
+	Next
+
+	//para nao gerar arquivos de log se nao for necessario
+	oMailServer:cTitulo		:= 'CXAgrupar-'+AllTrim(nomeprog)
+
+	//Desativa os alertas de mensagens de erro
+	oMailServer:lMostraMsg 	:= .Not. lJob
+
+	//Inicializa conexao com servidor SMTP
+	If .Not. oMailServer:Conectar()
+		lErro 	:= .T.
+	EndIf
+
+	If .Not. lErro
+		//Tenta enviar o email
+		If .Not. oMailServer:Enviar( oMail )
+			lErro		:= .T.
+		EndIf
+	EndIf
+
+	//Desconecta do servidor SMTP
+	If .Not. oMailServer:Desconectar()
+//		lErro 	:= .T.
+	EndIf
+
+	FWFreeVar(oMailServer)
+	oMailServer := Nil
+
+	FWFreeVar(oMail)
+	oMail	:= Nil
+
+Return .Not. lErro
+
+//-------------------------------------------------------------------------------------------------
+// Funcao para solicitar ao usuario os dados para envio de emails
+//-------------------------------------------------------------------------------------------------
+Static Function DadosEmail();
+						AS Array
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local aMail			AS Array
+	Local lOK			AS Logical
+	Local oFnt			AS Object
+
+	Local oDlg			AS Object
+	Local oMTexto		AS Object
+	
+	Local nLarBt		AS Numeric
+	Local nAltBt		AS Numeric
+	Local aPosBt		AS Array
+
+	Private cMailFr		AS Character
+	Private cMailTo		AS Character
+	Private cMailCc		AS Character
+	Private cMailCo		AS Character
+	Private cTitulo		AS Character
+	Private cTexto		AS Character
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	lOK		:= .F.
+	oFnt	:= tFont():New(,,-11,,.T.)
+
+	nLarBt	:= 050
+	nAltBt	:= 015
+
+	cMailFr	:= Space(60)
+	cMailTo	:= Space(150)
+	cMailCc	:= Space(150)
+	cMailCo	:= Space(150)
+	cTitulo	:= Space(50)
+	cTexto	:= ''
+
+	//---------------------------------------------------------------------------------------------
+	//Monta tela
+	oDlg := MsDialog():New(000,000,350,540,U_CXTxtMsg()+"Informações do Email",,,,,,,,,.T.)
+		
+		aPosBt	:= U_CXPosBtn(oDlg,nLarBt,nAltBt)
+		
+		tSay():New(	010,010,{||'Remetente:'},oDlg,,@oFnt,,,,.T.,,,100,20)
+		TGet():New(	008,050,{|u| if(PCount()>0,cMailFr:=u,cMailFr)}, oDlg,;
+					210,010,'@',{|o| U_CXVldEmails(@cMailFr,,,.F.,,,.T.) },,,,,,.T.,,,,,,,,,,'cMailFr')
+
+		tSay():New(	030,010,{||'Destinatário:'},oDlg,,@oFnt,,,,.T.,,,100,20)
+		TGet():New(	028,050,{|u| if(PCount()>0,cMailTo:=u,cMailTo)}, oDlg,;
+					210,010,'@',{|o| U_CXVldEmails(@cMailTo,,,,,,.T.) },,,,,,.T.,,,,,,,,,'_EM','cMailTo')
+
+		tSay():New(	050,010,{||'Copia para:'},oDlg,,@oFnt,,,,.T.,,,100,20)
+		TGet():New(	048,050,{|u| if(PCount()>0,cMailCc:=u,cMailCc)}, oDlg,;
+					210,010,'@',{|o| U_CXVldEmails(@cMailCc,,,.F.,,,.T.) },,,,,,.T.,,,,,,,,,'_EM','cMailCc')
+
+		tSay():New(	070,010,{||'Copia Oculta:'},oDlg,,@oFnt,,,,.T.,,,100,20)
+		TGet():New(	068,050,{|u| if(PCount()>0,cMailCo:=u,cMailCo)}, oDlg,;
+					210,010,'@',{|o| U_CXVldEmails(@cMailCo,,,.F.,,,.T.) },,,,,,.T.,,,,,,,,,'_EM','cMailCo')
+
+		tSay():New(	090,010,{||'Título:'},oDlg,,@oFnt,,,,.T.,,,100,20)
+		TGet():New(	088,050,{|u| if(PCount()>0,cTitulo:=u,cTitulo)}, oDlg,;
+					210,010,'@',{|o| U_CXNaoVazio(cTitulo,'título') },,,,,,.T.,,,,,,,,,,'cTitulo')
+
+		tSay():New(110,010,{||'Mensagem:'},oDlg,,@oFnt,,,,.T.,,,100,20)
+		oMTexto 	:= tMultiget():New(	108,050,{|u|if(Pcount()>0,cTexto:=u,cTexto)},oDlg,;
+										210,040,,,,,,.T.,,,,,,.F.,{|o| U_CXNaoVazio(cTexto,'mensagem')},,,,.T.)
+
+		oMTexto:EnableVScroll(.T.)
+		oMTexto:EnableHScroll(.T.)
+
+		tButton():New(aPosBt[1],aPosBt[5][5],'Confirma'	,oDlg,{|| lOK := VldEmail() , IIf(lOK,oDlg:End(),) 	},045,015,,@oFnt,,.T.)
+		tButton():New(aPosBt[1],aPosBt[5][1],'Cancela'	,oDlg,{|| oDlg:End() 								},045,015,,@oFnt,,.T.)
+
+		oDlg:lEscClose := .T.
+		oDlg:lCentered := .T.
+	oDlg:Activate()
+
+	//Se confirmou
+	If lOK
+		aMail	:= Array(nML_TAMARR)
+		aMail[nML_FROM]		:= cMailFr
+		aMail[nML_TO]		:= MailGroup(cMailTo)
+		aMail[nML_CC] 		:= MailGroup(cMailCc)
+		aMail[nML_CCO]		:= MailGroup(cMailCo)
+		aMail[nML_TITULO]	:= cTitulo
+		aMail[nML_MENSAG]	:= cTexto
+	Else
+		aMail	:= {}
+	EndIf
+
+Return aMail
+
+//-------------------------------------------------------------------------------------------------
+// Validacao no OK da tela de emails
+//-------------------------------------------------------------------------------------------------
+Static Function VldEmail();
+ 					AS Logical
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local lRet			AS Logical
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	lRet	:= .T.
+	If .Not. U_CXNaoVazio(cMailTo,'destinatário')
+		lRet	:= .F.
+	ElseIf .Not. U_CXNaoVazio(cTitulo,'título')
+		lRet	:= .F.
+	ElseIf .Not. U_CXNaoVazio(cTexto,'mensagem')
+		lRet	:= .F.
+	EndIf
+
+Return lRet
+
+//-------------------------------------------------------------------------------------------------
+Static Function SayCst(	nLin,;	// 01
+						nCol,;	// 02
+						cStr,;	// 03
+						oFnt)	// 04
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local nX			AS Integer
+	Local cChar			AS Character
+
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR nLin		AS Numeric
+	ParamType 1		VAR nCol		AS Numeric
+	ParamType 2		VAR cStr		AS Character
+	ParamType 3		VAR oFnt		AS Object
+
+	//---------------------------------------------------------------------------------------------
+	For nX := 1 to len(cStr)
+		cChar	:= SubStr(cStr,nX,1)
+
+		oRpt:Say(	nLin 	,;	//01
+					nCol	,;	//02
+					cChar	,;	//03
+					oFnt 	) 	//04
+		nCol	+= nTamChar
+	Next
+
+Return
+
+//-------------------------------------------------------------------------------------------------
+Static Function ImpTotais(	nNivel		,;	// 01
+							nLinha		,;	// 02
+							lTotalGeral	);	// 03
+								AS Numeric
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local lImpTotais		AS Logical
+	Local nEspacos			AS Numeric
+	Local nTamTxtTot		AS Numeric
+	Local nCol				AS Numeric
+	Local nTamStr			AS Numeric
+	Local nNvNyx			AS Numeric
+	Local nNvImp			AS Numeric
+	Local cTxtTot			AS Character
+	Local cStr			    AS Character
+
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR nNivel		  		AS Numeric			Optional Default NIL
+	ParamType 1		VAR nLinha		 	  	AS Numeric			Optional Default NIL
+	ParamType 2		VAR lTotalGeral			AS Logical			Optional Default .F.
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+
+	//Se nao existem totalizadores para impressao retorna
+	If nTotTam == 0
+		Return nLinha
+	EndIf
+
+	//Compatibilidade com o NyxAgrupa
+	nNvImp	:= nNivel
+	nNvNyx	:= nNivel
+	If 	lTotalGeral .And. ;
+		nNivel > 1
+
+		nNvNyx	:= nNivel - 1
+		nNvImp	:= nNivel - 1
+	EndIf
+
+	//---------------------------------------------------------------------------------------------
+
+	//Caractere para impressao da linha separadora antes dos totalizadores
+	//If  laTotLinAnt							.And. 	;	//Se .T. tamanho e tipo OK 
+	If	.Not. Empty(aTotLinAnt[nNivel])
+		cTotLinAnt	:= aTotLinAnt[nNivel]
+	Else
+		cTotLinAnt	:= ''
+	EndIf
+
+	//Caractere para impressao da linha separadora depois dos totalizadores
+	//If 	laTotLinDep							.And. 	;	//Se .T. tamanho e tipo OK 
+	If	.Not. Empty(aTotLinDep[nNivel])
+		cTotLinDep	:= aTotLinDep[nNivel]
+	Else
+		cTotLinDep	:= ''
+	EndIf
+
+	//---------------------------------------------------------------------------------------------
+
+	nEspacos 	:= aGrpEspacos[nNivel]
+	lImpTotais	:= .T.
+
+	//+-------------------------------+
+	//| Linha antes dos totalizadores |
+	//+-------------------------------+
+	If	.Not. Empty(cTotLinAnt) .And. ;
+		.Not. aImpMesmLin[nNivel]
+
+		nLinha	:= U_CXSayLin(	nLinha		,;	//01
+								nEspacos	,;	//02
+								cTotLinAnt	,;	//03
+								nExpor		,;	//04
+								nNvImp		,;	//05
+								'T'			) 	//06
+		nLinha++
+	EndIf
+
+	//---------------------------------------------------------------------------------------------
+
+	//+---------------------------------------------------+
+	//| Se nao for para imprimir o nivel pula a impressao |
+	//+---------------------------------------------------+
+	If 	laGrpImpr							.And. ;
+		.Not. aGrpImpr[nNivel]
+
+		lImpTotais	:= .F.
+	//+---------------------------------------------------------+
+	//| Se nao for para imprimir o totalizador pula a impressao |
+	//+---------------------------------------------------------+
+	ElseIf 	laImpTotGrp						.And. ;
+			.Not. aImpTotGrp[nNivel]
+
+		lImpTotais	:= .F.
+	EndIf
+
+	//---------------------------------------------------------------------------------------------
+
+	If lImpTotais
+		//+-----------------------------------------+
+		//| Imprime descricao da linha totalizadora |
+		//+-----------------------------------------+
+		cTxtTot 	:= ''
+		nTamTxtTot 	:= 0
+		If	.Not. Empty(aTxtTot[nNivel])
+
+			cTxtTot 	:= RTrim(aTxtTot[nNivel]+' ')
+			nTamTxtTot 	:= Len(cTxtTot)
+			nLinha		:= U_CXSay(	nLinha		,;	//01
+									nEspacos	,;	//02
+									cTxtTot		,;	//03
+									'E'			,;	//04
+									nTamTxtTot	,;	//05
+									nExpor		,;	//06
+									nNvImp		,;	//07
+									'T'			) 	//08
+		EndIf
+
+		//+------------------------------+
+		//| Imprime a linha totalizadora |
+		//+------------------------------+
+//		nEspacos := aGrpEspacos[nNivel]
+		nEspacos := 0
+
+		If Type('lNyxAgrupa') == "L"
+			//Existe o array aDescricoes?
+			If 	Type('aDescricoes') == 'A' .And. ;
+				Len(aDescricoes) >= nNvNyx
+
+				If 	Type('aInterpDesc') == 'A' .And. ;
+					Len(aInterpDesc) >= nNvNyx .And. ;
+					aInterpDesc[nNvNyx]
+
+					nEspacos += len( &(aDescricoes[nNvNyx]) )
+				Else
+					nEspacos += len( aDescricoes[nNvNyx] )
+				EndIf
+			EndIf
+			//           Posicao do ultimo      Posical atual
+			nEspacos	+= ( (nGrpTam*2) - 1) //- ( (nNvNyx * 2) - 1 ) // fomula do agrupa
+		EndIf
+
+		//+-----------------------------+
+		//| Gera a string com os totais |
+		//+-----------------------------+
+		For nCol := 1 to nTotTam
+
+			//Acrescenta espacamento entre colunas totais
+			nEspacos	+= aTotEspacos[nCol]
+
+			//+-----------------------------------+
+			//|Criar string da linha totalizadora |
+			//+-----------------------------------+
+			cStr 	:= Eval(aTotBloco[nCol], _aTotGrp[nNivel][nCol], nCol , nNivel )
+
+			//If 	laTotCol				.And. ;
+			If	laGrpCpos				.And. ;
+				len(aTotCol) >= nCol
+
+				nTamStr	:= aGrpCpos[aTotCol[nCol]][nGCP_TAMANHO]
+			Else
+				nTamStr := Len(cStr)
+			EndIf
+
+			//+-----------------------+
+			//| Imprime totalizadores |
+			//+-----------------------+
+			If 	nEspacos > nTamTxtTot .Or. ;
+				nTamTxtTot == 0
+
+				nLinha	:= U_CXSay(	nLinha				,;	//01
+									nEspacos			,;	//02
+									cStr				,;	//03
+									'D'					,;	//04
+									nTamStr				,;	//05
+									nExpor				,;	//06
+									nGrpTam+aTotCol[nCol],;	//07
+									'D'			 		)	//08
+			EndIf
+
+			nEspacos	+= nTamStr
+
+			//Se ultimo totalizador incrementa a linha
+			If nCol == nTotTam
+				nLinha ++
+			EndIf
+		Next
+
+		//+------------------------+
+		//| Zera os totalizadores  |
+		//+------------------------+
+		//Colocado aqui para reutilizar os dados dos totais e calcular medias por exemplo.
+		For nCol := 1 to nTotTam
+			_aTotGrp[nNivel][nCol] := 0
+		Next
+
+	EndIf
+
+	//---------------------------------------------------------------------------------------------
+
+	//+-----------------------------+
+	//| Linha apos os totalizadores |
+	//+-----------------------------+
+	If	.Not. Empty(cTotLinDep) 	.And. ;
+		( .Not. lImpTotais .And. .Not. Empty(cTotLinAnt) )	//Se nao tem totalizador e ja imprimiu uma linha antes nao imprime uma linha depois
+
+		nLinha	:= U_CXSayLin(	nLinha				,;	//01
+								aGrpEspacos[nNivel]	,;	//02
+								cTotLinDep			,;	//03
+								nExpor				,;	//04
+								nNvImp				,;	//05
+								'T'					) 	//06
+		nLinha++
+	EndIf
+
+	//Nao salda linha se for para imprimir na mesma linha
+	If .Not. aImpMesmLin[nNivel]
+		//Linha que separa o totalizador do proximo agrupamento
+		nLinha++
+	Endif
+
+Return nLinha
+
+//-------------------------------------------------------------------------------------------------
+// Funcao para impressao do cabecalho do agrupamento
+//-------------------------------------------------------------------------------------------------
+Static Function ImpCabecDet(nLinha,;	//01
+							nExpor);	//02
+ 								AS Numeric
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local nX			AS Numeric
+
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR nLinha  	  		AS Numeric					Optional Default NIL
+	ParamType 0		VAR nExpor  	  		AS Numeric					Optional Default NIL
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+
+	//+---------------------------+
+	//| Cabecalho do detalhamento |
+	//+---------------------------+
+	If 	ValType(aCabecDet) == 'A' .And. ;
+		Len(aCabecDet) > 0
+
+		For nX := 1 to Len(aCabecDet)
+			nLinha	:= U_CXSay(	nLinha						,;	// 01
+								aCabecDet[nX][nCBD_POSICAO]	,;	// 02
+								aCabecDet[nX][nCBD_TITULO]	,;	// 03
+								aCabecDet[nX][nCBD_ALINHA]	,;	// 04
+								aCabecDet[nX][nCBD_TAMANHO]	,;	// 05
+								nExpor						,;	// 06
+								nGrpTam+nX					,;	// 07
+								'A'							) 	// 08
+		Next
+		nLinha++
+
+		//Linha separadora
+		If .Not. Empty(cGrpLinDep)
+			nLinha	:= U_CXSayLin(	nLinha		,;	// 01
+									nEspDetalhe	,;	// 02
+									cGrpLinDep	,;	// 03
+									nExpor		,;	// 04
+									nGrpTam+1	,;	// 05
+									'A'			)	// 06
+			nLinha++
+		EndIf
+
+	//Modelo de cabecalho antigo
+	ElseIf	ValType(cCabecDet) == 'C' 	.And. ;
+			.Not. Empty(cCabecDet)
+
+		nLinha	:= U_CXSay(	nLinha		,;	// 01
+							nEspDetalhe	,;	// 02
+							cCabecDet	,;	// 03
+							/*cAlin*/	,;	// 04
+							/*nTamanho*/,;	// 05
+							nExpor		,;	// 06
+							nGrpTam		,;	// 07
+							'A'			) 	// 08
+		nLinha++
+		//Linha separadora
+		nLinha	:= U_CXSayLin(	nLinha		,;	// 01
+								nEspDetalhe	,;	// 02
+								cGrpLinDep	,;	// 03
+								nExpor		,;	// 04
+								nGrpTam		,;	// 05
+								'A'			) 	// 06
+		nLinha++
+	EndIf
+
+Return nLinha
+
+//#############################################################################
+//##+----------+----------+-------+--------------------+------+-------------+##
+//##|Programa  | CXSay    | Autor | Cirilo Rocha       | Data |  07/06/2010 |##
+//##+----------+----------+-------+--------------------+------+-------------+##
+//##|Descr.    | Função para impressão de texto em relatórios não gráficos  |##
+//##|          | Oferece suporte para exportar para excel                   |##
+//##+----------+-----------+------------------------------------------------+##
+//##|   DATA   |Programador| Manutenção efetuada                            |##
+//##+----------+-----------+------------------------------------------------+##
+//##| 14/05/12 | Cirilo R. | Modificada a forma de impressão para adaptação |##
+//##|          |           |  para geração em HTML e PDF                    |##
+//##| 24/07/12 | Cirilo R. | Correção no alinhamento a esqueda para remover |##
+//##|          |           |  os espaços desnecessários a direita           |##
+//##| 26/07/12 | Cirilo R. | Melhoria na impressão quando pula linhas, não  |##
+//##|          |           |  estava sendo gerada para excel quando pulava  |##
+//##|          |           |  várias linhas entre chamadas sucessivas       |##
+//##| 19/10/12 | Cirilo R. | Ajuste para não imprimir ou gravar quando o    |##
+//##|          |           |  conteúdo da string for vazio                  |##
+//##| 25/08/15 | Cirilo R. | Ajuste nos cortes quando a string é maior que  |##
+//##|          |           |  o campo a ser impresso                        |##
+//##| 26/02/16 | Cirilo R. | Correção de erro na situação acima             |##
+//##| 16/05/16 | Cirilo R. | Diversas melhorias para impressão em PDF       |##
+//##| 23/02/17 | Cirilo R. | Tratamento para impressão de cabeçalho extra   |##
+//##|          |           |  após a quebra de página (CXR001)              |##
+//##| 06/01/22 | Cirilo R. | Pequena revisão no fonte                       |##
+//##| 22/03/22 | Cirilo R. | Melhoria para os caracteres especiais antigos  |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+----------+-----------+------------------------------------------------+##
+//#############################################################################
+//Controla o incremento de linhas entre diferentes chamadas da funcao
+Static nLinAnt			:= NIL
+Static cChLin			:= Left(__PrtFatLine(),3)		AS Character
+Static cChLin2			:= Left(__PrtThinLine(),3)		AS Character
+Static cChCenter		:= Left(__PrtCenter('   '),3)	AS Character
+Static cChRight			:= Left(__PrtRight('   '),3)	AS Character
+Static cChLeft			:= Left(__PrtLeft('  '),3)		AS Character
+//-------------------------------------------------------------------------------------------------
+User Function CXSay(nLinha		,;	//01 nLinha (def nLin)
+					nCol		,;	//02 nCol
+					cString		,;	//03 cString
+					cAlin		,;	//04 cAlin	(def E)
+					nTamanho	,;	//05 nTamanho (def Len(string))
+					nExpor		,;	//06 nExpor
+					nNivel		,;	//07 nNivel (def 1)
+					cTipo		,;	//08 cTipo (def D)
+					lLinha		,;	//09 lLinha (def .F.)
+					bPosCabec	);	//10 bPosCabec
+						AS Numeric
+	
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local cStr			AS Character
+	Local cItem	    	AS Character
+	Local oArea			AS Object
+	Local nX			AS Integer
+	Local lAdiciona		AS Logical
+
+	Local nIncLin		AS Integer
+
+	Private lQuebrouPg	AS Logical
+
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR nLinha			AS Numeric					Optional Default nLin
+	ParamType 1		VAR nCol			AS Numeric					Optional Default NIL
+	ParamType 2		VAR cString			AS Character
+	ParamType 3		VAR cAlin			AS Character				Optional Default 'E'	//Esquerda
+	ParamType 4		VAR nTamanho		AS Numeric					Optional Default Len(cString) //(limite - nCol)
+	ParamType 5		VAR nExpor			AS Numeric					Optional Default NIL
+	ParamType 6		VAR nNivel			AS Numeric					Optional Default 1
+	ParamType 7		VAR cTipo			AS Character				Optional Default 'D'	//Detalhe
+	ParamType 8		VAR lLinha			AS Logical					Optional Default .F.
+	//usado apenas para gravar no arquivo temporario para exportacao para excel
+	ParamType 9		VAR bPosCabec		AS Block					Optional Default NIL //{|nLin| nLin }
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	nIncLin		:= 0
+	lQuebrouPg	:= .F.
+
+	//Funcao para limpar a variavel nLinAnt
+	If cTipo == 'L'
+		nLinAnt	:= Nil
+		Return
+	EndIf
+
+	If Type('nLin') == 'N'
+		nIncLin	:= ( nLin - nLinha ) //Tratamento para o pos-incremento
+	Else
+		nIncLin	:= 0
+	EndIf
+
+	If nIncLin < 0
+		nIncLin	:= 0
+	EndIf
+	
+	//__PrtFatLine() / __PrtThinLine()
+	If 	Left(cString,3) == cChLin .Or. ;
+		Left(cString,3) == cChLin2
+		
+		lLinha	:= .T.
+	ElseIf Left(cString,3) == cChCenter	//__PrtCenter
+		cAlin	:= 'C'
+	ElseIf Left(cString,3) == cChRight	//__PrtRight
+		cAlin	:= 'D'
+	ElseIf Left(cString,3) == cChLeft	//__PrtLeft
+		cAlin	:= 'E'
+	EndIf
+
+	//-------------------------------------------------------------------------------------------------
+
+	//Variavel para o tipo
+	If ValType(nExpor) <> 'N'
+		If Type('nExportar') == 'N'
+			nExpor	:= nExportar
+		Else
+			nExpor	:= nNormal
+		EndIf
+	EndIf
+
+	//-------------------------------------------------------------------------------------------------
+
+	//Controle de chamadas recursivas
+	If Type('lCXCabec') <> 'L'
+		lQuebrouPg	:= .F.
+		nLinha 		:= U_CXQuebraPag(nLinha,1,nExpor)
+	EndIf
+
+	If 	lQuebrouPg .And. ;
+		ValType(bPosCabec) == 'B' //Otimizacao
+
+		nLinha	:= Eval(bPosCabec,nLinha,nExpor)
+	EndIf
+	//-------------------------------------------------------------------------------------------------
+
+	//limite da pagina
+	If 	nExpor == nNormal .Or. ;
+		nExpor == nPDF
+
+		nTamanho := Min(nTamanho,limite-nCol)
+	//Else
+	//	nTamanho := limite
+	EndIf
+
+	If nTamanho < 0
+		Return nLinha
+	EndIf
+
+	//cStr  	:= Left(cString,nTamanho)
+	cStr		:= cString
+
+	//-------------------------------------------------------------------------------------------------
+
+	cStr		:= U_CXAjustaStr(cStr,cAlin,nTamanho)
+
+	//-------------------------------------------------------------------------------------------------
+
+	//gravar campos na tabela temporaria para excel
+	If 	nExpor == nExcel 		.Or. ;	//Excel
+		nExpor == nBrOffice 	.Or. ;	//ou BrOffice
+		nExpor == nPDF					//ou PDF
+
+		oArea		:= tCtrlAlias():GetArea()
+
+		If cTipo <> 'P' //Nao faz o tratamento quando for quebra de pagina
+
+			If 	ValType(nLinAnt) == 'U' .Or. ;
+				nLinAnt <> nLinha
+
+				lAdiciona 	:= .T.
+
+				If 	ValType(nLinAnt) == 'N' .And. ;
+					(nLinha-nLinAnt) > 0
+
+					//Adiciona linhas em branco se necessario
+					For nX := 2 to (nLinha-nLinAnt)
+						RecLock(cArqTrab,.T.)
+							(cArqTrab)->(FieldPut(FieldPos('TRB_CXTIPO'),'D'))
+						(cArqTrab)->(MSUnlock())
+					Next
+				EndIf
+
+				nLinAnt 	:= nLinha
+			Else
+				lAdiciona 	:= .F.
+			EndIf
+		Else
+			lAdiciona	:= .T.
+			nLinAnt		:= nLinha //TODO VERIFICAR SE ASSIM ESTA BOM NLIN?
+		EndIf
+
+//		If !Empty(cStr)
+			RecLock(cArqTrab,lAdiciona)
+				cItem	:= StrZero(nNivel,2)
+				
+				(cArqTrab)->(FieldPut(FieldPos('CAMPO'+cItem),cStr))
+				(cArqTrab)->(FieldPut(FieldPos('CXCOL'+cItem),nCol))
+				If lAdiciona
+					(cArqTrab)->(FieldPut(FieldPos('TRB_CXTIPO'),cTipo ))
+					(cArqTrab)->(FieldPut(FieldPos('TRB_CXLINH'),lLinha))
+				EndIf
+
+			(cArqTrab)->(MSUnlock())
+//		EndIf
+
+		oArea:RestArea()		//Restaura area
+		oArea:Destroy()
+		FWFreeVar(oArea)
+	//-------------------------------------------------------------------------------------------------
+	//HTML
+	ElseIf nExpor == nHTML
+		//Ainda nao tratado
+	//-------------------------------------------------------------------------------------------------
+	//Impressao normal
+	Else
+		If !Empty(cStr)
+		   @nLinha,nCol PSAY cStr
+		EndIf
+	EndIf
+
+	//-------------------------------------------------------------------------------------------------
+
+//	If !lQuebrouPg //Trata pos-incremento do nLin (nLin++) se nao quebrou de pagina
+		nLinha	+= nIncLin
+//	EndIf
+
+	nLin	:= nLinha
+
+Return nLinha
+
+//#############################################################################
+//##+----------+-------------+-------+-----------------+------+-------------+##
+//##|Programa  | CXAjustaStr | Autor | Cirilo Rocha    | Data |  25/08/2015 |##
+//##+----------+-------------+-------+-----------------+------+-------------+##
+//##|Descr.    | Ajusta string de acordo com o alinhamento e tamanho        |##
+//##+----------+-----------+------------------------------------------------+##
+//##|   DATA   |Programador| Manutenção efetuada                            |##
+//##+----------+-----------+------------------------------------------------+##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+----------+-----------+------------------------------------------------+##
+//#############################################################################
+User Function CXAjustaStr(	cStr	,;	// 01
+							cAlin	,;	// 02
+							nTamanho);	// 03
+								AS Character
+
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR cStr			AS Character 
+	ParamType 1		VAR cAlin			AS Character				Optional Default 'E' 
+	ParamType 2		VAR nTamanho		AS Numeric 
+
+	//Alinha a string conforme parametro
+	If Upper(cAlin) == 'C'
+		cStr 		:= AllTrim(cStr)
+		cStr		:= Left(cStr,nTamanho)
+	 	cStr 	:= PadC(cStr,nTamanho)
+	ElseIf 	Upper(cAlin) == 'D' .Or. ;
+			Upper(cAlin) == 'R'
+		cStr	:= Right(cStr,nTamanho)
+	  	cStr 	:= PadL(cStr,nTamanho)
+	ElseIf  Upper(cAlin) == 'J' .Or. ;	//Jusitificado
+			Upper(cAlin) == 'M'			//Memo
+		//PARA ESTES CASOS NÃO RECORTA NADA
+	Else
+	  	cStr 	:= Left(cStr,nTamanho) //Feito assim porque o PadR sempre corta a direita e eu preciso que corte a esquerda
+		cStr 	:= PadR(cStr,nTamanho)
+	EndIf
+
+Return cStr
+
+//#############################################################################
+//##+----------+----------+-------+--------------------+------+-------------+##
+//##|Programa  | CXSayLin | Autor | Cirilo Rocha       | Data |  04/05/2012 |##
+//##+----------+----------+-------+--------------------+------+-------------+##
+//##|Descr.    | Função para impressão de uma linha totalizadora em relató- |##
+//##|          | rios não gráficos.                                         |##
+//##|          | Oferece suporte para exportar para excel                   |##
+//##+----------+-----------+------------------------------------------------+##
+//##|   DATA   |Programador| Manutenção efetuada                            |##
+//##+----------+-----------+------------------------------------------------+##
+//##| 14/05/12 | Cirilo R. | Modificada a forma de impressão para adaptação |##
+//##|          |           |  para geração em HTML e PDF                    |##
+//##| 25/07/12 | Cirilo R. | Correção para não utilizar os caracteres espe- |##
+//##|          |           |  ciais na impresão da linha, para compatibili- |##
+//##|          |           |  dade                                          |##
+//##| 13/11/15 | Cirilo R. | Melhoria para imprimir as linhas padrão de re- |##
+//##|          |           |  latórios                                      |##
+//##| 30/08/19 | Cirilo R. | Pequena revisão no fonte                       |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+----------+-----------+------------------------------------------------+##
+//#############################################################################
+User Function CXSayLin(	nLinha	,;	//01 nLinha
+						nCol	,;	//02 nCol
+						cChar	,;	//03 cChar
+						nExpor	,;	//04 nExpor	
+						nNivel	,;	//05 nNivel
+						cTipo	); 	//06 cTipo
+							AS Numeric
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local cString		AS Character
+	Local lLinPad		AS Logical
+	
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR nLinha			AS Numeric
+	ParamType 1		VAR nCol			AS Numeric
+	ParamType 2		VAR cChar			AS Character
+	ParamType 3		VAR nExpor			AS Numeric					Optional Default NIL
+	ParamType 4		VAR nNivel			AS Numeric					Optional Default 1
+	ParamType 5		VAR cTipo			AS Character				Optional Default NIL
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	If Upper(cChar) == 'F'
+		cChar	:= PRT_THINLINE
+	ElseIf Upper(cChar) == 'G'
+		cChar	:= PRT_FATLINE
+	EndIf
+	
+	lLinPad		:= ( cChar == PRT_THINLINE .Or. cChar == PRT_FATLINE )
+	
+	//Variavel para o tipo 
+	If nExpor == NIL
+		If Type('nExportar') == 'N'
+			nExpor	:= nExportar
+		Else
+			nExpor	:= nNormal
+		EndIf
+	EndIf
+	
+	//Impressao normal   
+	//If nExpor == nNormal
+	//	If !Empty(cString)
+	//		If cChar == '-'
+	//			cString	:= __PrtThinLine()
+	//			cString	:= Replicate(Char(151),limite - nCol)
+	//		ElseIf cChar == '*' .Or. cChar == '#'
+	//			cString	:= __PrtFatLine()
+	//		EndIf
+	//	EndIf
+	//EndIf
+	
+	If lLinPad .And. ;
+		(nExpor <> nNormal)
+
+		If cChar == PRT_THINLINE 
+			cChar	:= '-' //Chr(175)
+		ElseIf cChar == PRT_FATLINE
+			cChar	:= '='
+		Else
+			cChar	:= '*'
+		EndIf
+		lLinPad	:= .F.
+
+	EndIf
+	
+	If lLinPad
+		cString	:= cChar
+	Else
+		cString	:= Replicate(cChar,limite - nCol)
+			
+		//Compatibiliza o tamanho da linha
+		cString	:= Left(cString,limite - nCol - 5) + Right(cString,5)
+	EndIf
+	
+	nLinha	:= U_CXSay(	nLinha		,; //01
+						nCol		,; //02
+						cString		,; //03
+						/*cAlin*/	,; //04
+						/*nTamanho*/,; //05
+						nExpor		,; //06
+						nNivel		,; //07
+						cTipo		,; //08
+						.T.			)  //09
+		             
+	nLin	:= nLinha
+
+Return nLinha
+
+//#############################################################################
+//##+----------+-------------+-------+------------------+------+------------+##
+//##|Programa  | CXAgrupaFil | Autor | Cirilo Rocha     | Data | 12/08/2013 |##
+//##+----------+-------------+-------+------------------+------+------------+##
+//##|Desc.     | Função para preencher os arrays para impressão de agrupa-  |##
+//##|          | mentos por filial                                          |##
+//##+----------+-----------+------------------------------------------------+##
+//##|   DATA   |Programador| Manutenção efetuada                            |##
+//##+----------+-----------+------------------------------------------------+##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+----------+-----------+------------------------------------------------+##
+//#############################################################################
+User Function CXAgrFil(cCpoFil);	//01 cCpoFil
+							AS Character
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local cTxtFil	AS Character
+	Local aInicArr	AS Array
+	Local nX		AS Integer
+
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR cCpoFil		AS Character
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	cTxtFil		:= ''
+	aInicArr	:= {'aGrupos','aGrpEspacos','aGrpTxtTot','aGrpLinAnt','aGrpLinDep',;
+					'aTotLinAnt','aTotLinDep','aGrpCabec','aGrpImpr','aGrpQuebPag'}
+
+	If !Empty(cCpoFil)
+		//Inicializa os arrays caso os mesmos nao tenho sido inicializados
+		For nX := 1 to len(aInicArr)
+			If ValAtrib(aInicArr[nX]) <> "A"
+				&(aInicArr[nX])	:= {}
+			EndIf
+		Next
+
+		cTxtFil	:= '"FILIAL: "+RTRIM(SM0->M0_CODFIL)+" - "+AllTrim(SM0->M0_FILIAL)'
+		//cTxtFil	:= "Posicione('SM0',1,cEmpAnt+"+AllTrim(cCpoFil)+",'"+cTxtFil+"')"
+		cTxtFil	:= "u_CXSM0(,"+AllTrim(cCpoFil)+",'"+cTxtFil+"') "
+	
+		aAdd(aGrupos,cTxtFil)
+		aAdd(aGrpEspacos,0)
+		aAdd(aGrpTxtTot,"'TOTAL DA '+"+cTxtFil)
+	
+		aAdd(aGrpLinAnt	,cGrpLinAnt)
+		aAdd(aGrpLinDep	,cGrpLinDep)
+		
+		aAdd(aTotLinAnt	,cTotLinAnt)
+		aAdd(aTotLinDep	,cTotLinDep)
+		
+		aAdd(aGrpCabec	,'')
+		aAdd(aGrpImpr	,.T.)
+		aAdd(aGrpQuebPag,.F.)
+	EndIf
+
+Return cTxtFil
+
+//-------------------------------------------------------------------------------------------------
+//SOMENTE PARA TIRAR A CRÍTICA DO CODEANALISYS (ARRANJO TÉCNICO!)
+Static Function ValAtrib(cVar)
+
+Return Type(cVar)
+
+//#############################################################################
+//##+----------+-------------+-------+-----------------+------+-------------+##
+//##|Programa  | CXQuebraPag | Autor | Cirilo Rocha    | Data |  06/02/2009 |##
+//##+----------+-------------+-------+-----------------+------+-------------+##
+//##|Desc.     | Função para quebrar corretamente as páginas em relatórios. |##
+//##|          |                                                            |##
+//##|          | Modo de Usar: chamar a função U_CXQuebraPag(), e declarar  |##
+//##|          | variáveis nTipo, nLin, nNumLinhas e tamanho como privadas. |##
+//##|          |                                                            |##
+//##|          | MS_QTDLIN parâmetro para determinar a quantidade de linhas |##
+//##|          | de impressão nos relatórios                                |##
+//##+----------+------------------------------------------------------------+##
+//##|Explicacao| Os relatórios normalmente suportam 65 linhas, exceto o     |##
+//##|          | tamanho 'P' em retrato que comporta 75 linhas              |##
+//##|          |                                                            |##
+//##|          |  P+15 -> 60 //Retrato   80 colunas                         |##
+//##|          |  M+15 -> 75 //Retrato  132 colunas                         |##
+//##|          |  M+18 -> 60 //Paisagem 132 colunas                         |##
+//##|          |  G+18 -> 65 //Paisagem 220 colunas                         |##
+//##+----------+-----------+------------------------------------------------+##
+//##|   DATA   |Programador| Manutenção efetuada                            |##
+//##+----------+-----------+------------------------------------------------+##
+//##| 02/01/11 | Cirilo R. | Feito tratamento para cancelamento de impressão|##
+//##| 26/07/11 | Cirilo R. | Ajuste no fonte para tratamento do P11 nas     |##
+//##|          |           |  variáveis Cabec1 e Cabec2                     |##
+//##| 14/05/12 | Cirilo R. | Modificada a forma de impressão para adaptação |##
+//##|          |           |  para geração em HTML e PDF                    |##
+//##| 01/11/12 | Cirilo R. | Ajuste para reinicializar as variáveis se for  |##
+//##|          |           |  chamada a partir de outro programa            |##
+//##| 10/04/13 | Cirilo R. | Pequena melhoria para imprimir corretamente na |##
+//##|          |           |  segunda execução, caso mude de orientação		|##
+//##| 13/11/15 | Cirilo R. | Pequena revisão no fonte                       |##
+//##| 26/02/16 | Cirilo R. | Melhoria quando chamado mais de uma vez pela   |##
+//##|          |           |  mesma rotina com tamanhos diferentes          |##
+//##| 28/03/16 | Cirilo R. | Melhoria para impressão do 3 cabeçalho         |##
+//##| 16/05/16 | Cirilo R. | Diversas melhorias no fonte para impressão PDF |##
+//##| 03/09/19 | Cirilo R. | Pequena revisão no fonte                       |##
+//##|          |           | Adicionada opção de impressão de cabeçalho     |##
+//##|          |           |  customizado                                   |##
+//##| 17/10/19 | Cirilo R. | Adicionara opção de impressão de rodapé        |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+----------+-----------+------------------------------------------------+##
+//#############################################################################
+
+//-------------------------------------------------------------------------------------------------------//
+//Exemplo bCabecCst                                                                                      //
+//	Private M_PAG		AS Numeric                                                                       //
+// 	Private bCabecCst	AS CodeBlock                                                                     //
+// 	bCabecCst	:= {|cTitulo,cCabec1,cCabec2,cNomeProg,cTamanho,nTipo,nPag| ;                            //
+// 						CabCst(cTitulo,cCabec1,cCabec2,cNomeProg,cTamanho,nTipo,nPag)}                   //
+//                                                                                                       //
+//Static Function CabCst(cTitulo,cCabec1,cCabec2,cNomeProg,cTamanho,nTipo,nPag)                          //
+//	                                                                                                     //
+//	//Declaracao de variaveis----------------------------------------------------------------------      //
+//	Local nLin		AS Numeric                                                                           //
+//	                                                                                                     //
+//	//Inicializa Variaveis-------------------------------------------------------------------------      //
+//	nLin	:= 001                                                                                       //
+//	                                                                                                     //
+//	@nLin,000 Psay __PrtLeft('Origem: '+cOrigem) //Imprime texto a esquerda                              //
+//	@nLin,000 Psay __PrtCenter(cTitulo) //Imprime texto no centro                                        //
+//	@nLin,000 Psay __PrtRight('Página: '+StrZero(nPag,2) ) //Imprime texto a esquerda                    //
+//	nLin++                                                                                               //
+//                                                                                                       //
+//	@nLin,000 Psay __PrtLeft('Destino: '+cDestino) //Imprime texto a direita                             //
+//	@nLin,000 Psay __PrtRight('Emissão: '+DtoC(Date())+' - '+Left(Time(),5)) //Imprime texto a direita   //
+//	nLin++                                                                                               //
+//                                                                                                       //
+//	@nLin++,000 pSay __PrtFatLine() //Linha grossa de ponta a ponta                                      //
+//                                                                                                       //
+//Return nLin                                                                                            //
+//-------------------------------------------------------------------------------------------------------//
+
+Static nLinSalt  	:= GetMv('MX_LINSALT',.F.,06)	AS Numeric
+Static nMaxLin		:= GetMv('MX_QLINPAG',.F.,60)	AS Numeric
+
+Static cProgAnt		:= ''		AS Character
+Static nNumLinhas				AS Numeric
+Static nSalto					AS Numeric
+Static lPrimeira				AS Logical
+
+//-------------------------------------------------------------------------------------------------
+User Function CXQuebraPag(	nLinha		,;	//01
+							nQtdLin		,;	//02
+							nExpor		,;	//03
+							lForcaQuebra);	//04 Forca quebra de pagina
+									AS Numeric
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local lInicCab		AS Logical
+	Local cTemp			AS Character
+	Local nPag			AS Integer
+
+	Private lCXCabec	AS Logical
+
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR nLinha				AS Numeric				Optional Default nLin
+	ParamType 1		VAR nQtdLin				AS Numeric				Optional Default 1
+	ParamType 2		VAR nExpor				AS Numeric				Optional Default NIL
+	ParamType 3		VAR lForcaQuebra		AS Logical				Optional Default .F.	//Forca quebra de pagina
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	lCXCabec		:= .T. //Controle de chamadas recursivas, precisa ser declarada aqui mas nao e' usada neste fonte, e' usada no U_CXSay
+
+	//+------------------------------------+
+	//| Variavel para o tipo de exportacao |
+	//+------------------------------------+
+	If ValType(nExpor) <> 'N'
+		If Type('nExportar') == 'N'
+			nExpor	:= nExportar
+		Else
+			nExpor	:= nNormal
+		EndIf
+	EndIf
+	
+	//Imprime cabecalho para Excel, BrOffice ou PDF
+	lInicCab	:= 	nExpor == nExcel 	.Or. ;
+					nExpor == nBrOffice	.Or. ; 	//Excel ou BrOffice
+					nExpor == nPDF				//O PDF e' gerado a partir do arquvivo temporario do excel
+
+	lQuebrouPg	:= .F. //Variavel de controle se quebrou de pagina (privada na funcao origem)
+
+	//+---------------------------+
+	//| Monta dados do cabecalho  |
+	//| e inicializa as variaveis |
+	//+---------------------------+
+	If 	Type('aCabec') == 'U' .Or. ;	//Primeira execucao
+		cProgAnt <> nomeprog .Or. ;		//Ou chamada de outro programa (reinicializa variaveis)
+		lForcaQuebra
+
+		//------------------------------------------------------------------------------------------------
+		If cProgAnt <> nomeprog
+			lPrimeira	:= .T.
+		EndIf
+		
+		//Monta cabecalho customizado
+		If lInicCab
+			IniCabExc()
+		EndIf
+
+		//------------------------------------------------------------------------------------------------
+
+		//+----------------------+
+		//| Inicializa variaveis |
+		//+----------------------+
+//      If cProgAnt <> nomeprog
+
+			cProgAnt := nomeprog
+
+			//Ajusta quantidade de linhas caso a impressao nao seja direto na porta
+			nNumLinhas	:= U_CXLinPg()
+
+			//Ajusta cabec1 e 2 se invertidos
+			If !Empty(Cabec2) .And. ;
+				Empty(Cabec1)
+
+				Cabec1 	:= Cabec2
+				Cabec2	:= ''
+			EndIf
+
+			nSalto  	:= nLinSalt
+
+			//Ajusta quantidade de linhas para o cabecalho
+			If !Empty(Cabec2)
+				nSalto += 3
+			ElseIf !Empty(Cabec1)
+				nSalto += 2
+			EndIf
+
+//	   EndIf
+	EndIf
+
+	//------------------------------------------------------------------------------------------------
+
+	//Se exportar para Excel ou brOffice ou pdf
+//	If	lInicCab
+
+//		lQuebrouPg	:= .T.
+
+	//HTML
+	//ElseIf nExpor == nHTML
+	If nExpor == nHTML
+	//	nLinha	:= CabecHTML(aCabec,nLinha) //NAO IMPLEMENTADO
+
+	//Impressao Normal (verifica se quebrou de pagina)
+	Else
+
+		//+---------------------------------------------------------------------+
+		//| Verifica o cancelamento pelo usuario...                             |
+		//+---------------------------------------------------------------------+
+		If lAbortPrint .Or. ;
+			( Type('nLastKey') == 'N' .And. nLastKey == 27 )
+
+//			@nLinha,00 PSAY "*** CANCELADO PELO OPERADOR ***"
+		  	nLinha	:= U_CXSay(nLinha,00,"*** CANCELADO PELO OPERADOR ***",,,nExpor,1)
+		  	nLinha++
+		  	Return nLinha
+		Endif
+
+		//Processa salto de pagina
+		If (nLinha + nQtdLin) > nNumLinhas //Salto de Pagina
+			lQuebrouPg	:= .T.
+		Endif
+
+	EndIf
+
+	If lForcaQuebra
+		lQuebrouPg	:= .T.
+	EndIf
+
+	//Imprime cabecalho
+	If lQuebrouPg
+	
+		If 	Type('bRodape') == 'B' .And. ;
+			.Not. lPrimeira	//Pula primeira pagina
+			
+			Eval(bRodape,nLinha)
+		EndIf
+		
+		//Seta logo a posicao da linha
+	   	nLinha 		:= nSalto
+		nLin		:= nLinha 	//Resolve problema na linha
+		lPrimeira	:= .F.
+		//Se exportar para Excel ou brOffic	e ou PDF
+		If	lInicCab
+
+			If 	nExpor == nPDF .And. ;
+				(cArqTrab)->(RecCount()) > 0 //pula pagina apenas a partir da segunda
+
+				U_CXSay(nLinha-1,00,'',,,nExpor,,'P') //Forca quebra de pagina no arquivo PDF
+			EndIf
+
+			//Cria cabecalho para excel/libreoffice
+			If 	nExpor == nExcel 	.Or. ;
+				nExpor == nBrOffice
+
+				nLinha	:= CabecExcel(aCabec,nLinha)
+			EndIf
+
+		//HTML
+		ElseIf nExpor == nHTML
+		//	nLinha	:= CabecHTML(aCabec,nLinha) //NAO IMPLEMENTADO
+
+		//Impressao Normal
+		Else
+			If Type('bCabecCst') == 'B'
+				@ 000,000 pSay AvalImp(limite) //Ajusta impressao manualmente para relatorios txt sem Cabec
+				nLinha	:= 001
+				nLin	:= 001
+				If Type('M_PAG') == 'N'
+					nPag	:= M_PAG
+				EndIf
+				nLinha	:= Eval(bCabecCst,Titulo,Cabec1,Cabec2,NomeProg,Tamanho,nTipo,nPag)
+				If Type('M_PAG') == 'N'
+					M_PAG++
+				EndIf
+			Else
+				Cabec(Titulo,Cabec1,Cabec2,NomeProg,Tamanho,nTipo)
+			EndIf
+		EndIf
+
+		aCabec	:= NIL 		//Forca recarregar as variaveis do cabecalho, por causa da data e hora de impressao
+		If 	Type('Cabec3') == "C" .And. ;
+			!Empty(Cabec3)
+
+			nLinha	:= U_CXSay(nLinha,000,Cabec3,,,nExpor,,'D') //Imprime o 3o. cabecalho
+			nLinha++
+//			@nLinha++,000 pSay Cabec3
+			If Type('cLinCab3') == "C"
+				cTemp	:= cLinCab3
+//				@nLinha++,000 pSay cLinCab3
+			Else
+				cTemp	:= '-'
+//				@nLinha++,000 pSay Replicate('-',limite)
+  			EndIf
+  			nLinha	:= U_CXSayLin(nLinha,000,cTemp,nExpor,1,'D')
+  			nLinha++
+		EndIf
+
+	EndIf
+
+	nLin := nLinha
+
+Return nLinha
+
+//#############################################################################
+//##+----------+------------+-------+------------------+------+-------------+##
+//##|Programa  | CabecExcel | Autor | Cirilo Rocha     | Data |    /  /     |##
+//##+----------+------------+-------+------------------+------+-------------+##
+//##|Descr.    | Função para imprimir o cabeçalho no arquivo excel ou PDF   |##
+//##|          | so precisa ser inicializado uma vez para que a rotina iden-|##
+//##|          | tifique                                                    |##
+//##+----------+-----------+------------------------------------------------+##
+//##|   DATA   |Programador| Manutenção efetuada                            |##
+//##+----------+-----------+------------------------------------------------+##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+----------+-----------+------------------------------------------------+##
+//#############################################################################
+Static Function CabecExcel(	aCabec	,;
+							nLinha	);
+								AS Numeric
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local lImpCab		AS Logical
+	Local nX			AS Integer
+	
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR aCabec			AS Array
+	ParamType 1		VAR nLinha			AS Numeric
+
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	lImpCab		:= .F.
+	If Type('M_PAG') == 'N'
+		If M_PAG == 1 	//Se e' a primeira pagina
+			lImpCab	:= .T.
+		Else 				//Se outra pagina nao imprime mais
+			lImpCab	:= .F.
+		EndIf
+	EndIf
+
+	If lImpCab
+
+		For nX := 1 to len(aCabec)
+			If ValType(aCabec[nX]) == 'L'
+				nLinha	:= U_CXSayLin(nLinha,00,'-',nExcel,1,'C')
+				nLinha++
+			Else
+				nLinha	:= U_CXSay(nLinha,00,aCabec[nX],,,nExcel,1,'C')
+				nLinha++
+			EndIf
+		Next
+
+		M_PAG++
+
+	EndIf
+
+Return nLinha
+
+//#############################################################################
+//##+----------+-----------+-------+-------------------+------+-------------+##
+//##|Programa  | IniCabExc | Autor | Cirilo Rocha      | Data |    /  /     |##
+//##+----------+-----------+-------+-------------------+------+-------------+##
+//##|Descr.    | Função para inicializar a variável aCabec usada na impres- |##
+//##|          | são dos dados em excel ou PDF                              |##
+//##+----------+-----------+------------------------------------------------+##
+//##|   DATA   |Programador| Manutenção efetuada                            |##
+//##+----------+-----------+------------------------------------------------+##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+----------+-----------+------------------------------------------------+##
+//#############################################################################
+Static Function IniCabExc()
+	
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local cEmpresa	AS Character
+	
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	aCabec		:= {}
+	FWSM0Util():setSM0PositionBycFilAnt()	//Forca o reposicionamento do SM0
+
+	cEmpresa	:= AllTrim(SM0->M0_NOME)+' - '+AllTrim(SM0->M0_FILIAL)
+
+	aAdd(aCabec,.T.) //Linha
+	aAdd(aCabec,'TÍTULO..: '+titulo)
+	aAdd(aCabec,'PROGRAMA: '+nomeprog+' - '+DtoC(Date())+' - '+Time())
+	aAdd(aCabec,'EMPRESA.: '+cEmpAnt+'-'+cFilAnt+' - '+cEmpresa)
+	aAdd(aCabec,.T.) //Linha
+
+	If !Empty(Cabec1+Cabec2)
+//		aAdd(aCabec,.T.) //Linha
+
+		If !Empty(Cabec1)
+			aAdd(aCabec,Cabec1)
+		EndIf
+
+		If !Empty(Cabec2)
+			aAdd(aCabec,Cabec2)
+		EndIf
+
+//		If Type('Cabec3') == "C" .And. ;
+//			!Empty(Cabec3)
+//
+//			aAdd(aCabec,.T.) //Linha
+//			aAdd(aCabec,Cabec3)
+//		EndIf
+
+		aAdd(aCabec,.T.) //Linha
+	EndIf
+
+Return
+
+//#############################################################################
+//##+----------+-----------+-------+-------------------+------+-------------+##
+//##|Programa  | CXLinPg   | Autor | Cirilo Rocha      | Data |    /  /     |##
+//##+----------+-----------+-------+-------------------+------+-------------+##
+//##|Descr.    | Função para retornar a quantidade de linhas para impressão |##
+//##|          | em relatórios conforme orientação de tamanho               |##
+//##+----------+-----------+------------------------------------------------+##
+//##|   DATA   |Programador| Manutenção efetuada                            |##
+//##+----------+-----------+------------------------------------------------+##
+//##| 23/02/17 | Cirilo R. | Ajuste no tamanho G para utilizar 65 linhas    |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+----------+-----------+------------------------------------------------+##
+//#############################################################################
+User Function CXLinPg();
+				AS Numeric
+	
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local nNumLinhas	AS Numeric
+	
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	nNumLinhas	:= nMaxLin
+	If aReturn[nRT_SAIDA] <> nRT_SD_PRT  //Nao pode ser impressao matricial direto na porta
+		If Tamanho 	== 'M' 			.And. ;
+			nTipo 	== nRETRATO
+
+			nNumLinhas += 15 //neste caso o formulario tem 80 linhas
+		ElseIf Tamanho == 'G'
+			nNumLinhas += 5
+		EndIf
+	Endif
+
+Return nNumLinhas
+
+//#############################################################################
+//##+----------+----------+-------+---------------------+------+------------+##
+//##|Programa  | CXSayJ   | Autor | Cirilo Rocha        | Data | 28/03/2016 |##
+//##+----------+----------+-------+---------------------+------+------------+##
+//##|Descr.    | Função para impressão de um texto justificado em relatórios|##
+//##|          | texto                                                      |##
+//##|          |                                                            |##
+//##|          | Ex.: nLin := U_CXSayJ(nLin,000,cMsg,limite)                |##
+//##+----------+-----------+------------------------------------------------+##
+//##|   DATA   |Programador| Manutenção efetuada                            |##
+//##+----------+-----------+------------------------------------------------+##
+//##|          |           |                                                |##
+//##|          |           |                                                |##
+//##+----------+-----------+------------------------------------------------+##
+//#############################################################################
+User Function CXSayJ ( 	nLin	,;	//01 nLin
+						nCol	,;	//02 nCol
+						cTexto	,;	//03 cTexto
+						nLargura);	//04 nLargura
+							AS Numeric
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local aTexto			AS Array
+	Local nX				AS Integer
+
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0	VAR nLin  		AS Numeric
+	ParamType 1	VAR nCol  		AS Numeric
+	ParamType 2	VAR cTexto  	AS Character
+	ParamType 3	VAR nLargura	AS Numeric
+	
+	//---------------------------------------------------------------------------------------------
+	aTexto	:= U_CXMemoLine(cTexto,,,nLargura)
+	
+	For nX := 1 to len(aTexto)
+		nLin	:= U_CXQuebraPag(nLin) //Funcao para testar se deve ou nao quebrar a pagina
+		@nLin++,nCol pSay aTexto[nX]
+	Next
+
+Return nLin

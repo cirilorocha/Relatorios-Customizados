@@ -1,0 +1,181 @@
+#INCLUDE "RWMake.ch"
+#INCLUDE "Totvs.ch"
+#INCLUDE "ParmType.ch"
+#INCLUDE "CXInclude.ch"
+
+//#############################################################################
+//##+==========+==========+=======+====================+======+=============+##
+//##|Programa  | CXGetSX3 | Autor | Cirilo Rocha       | Data | 13/11/2019  |##
+//##+==========+==========+=======+====================+======+=============+##
+//##|Descr.    | FunÇÃo para fazer a leitura dos campos do SX3              |##
+//##|          |                                                            |##
+//##|          | Usada para reduzir os alertas do Code Analysis             |##
+//##+==========+==========+=================================================+##
+//##| DATA     | ANALISTA | MANUTENÇÃO EFETUADA                             |##
+//##+==========+==========+=================================================+##
+//##| 28/03/22 | Cirilo R.| Pequena otimização no fonte                     |##
+//##| 06/12/22 | Cirilo R.| Pequena otimização no fonte                     |##
+//##|          |          |                                                 |##
+//##|          |          |                                                 |##
+//##+==========+==========+=================================================+##
+//#############################################################################
+User Function CXGetSX3(	aCampos		,;	//01 Campos para selecao
+						cTabela		,;	//02 Tabela para filtro
+						cFiltro		,;	//03 Filtro ADVPL customizado (def .T.)
+						lVisual		,;	//04 Traz campos somente leitura (def .F.)
+						lReal		,;	//05 Traz apenas campos reais (def .F.)
+						nFltNv		,;	//06 Nivel de campo para filtro (def cNivel)
+						lSoCpo		,;	//07 Retorna somente o campo no array (def .F.)
+						aNaoLerCmp	);	//08 Campos que não devem ser lidos (def {})
+								AS Array
+
+	//Declaracao de variaveis----------------------------------------------------------------------
+	Local aRet			AS Array
+	Local aBindParam	AS Array
+	Local oArea			AS Object
+	Local cQry			AS Character
+	Local cQuery		AS Character
+	Local nX			AS Integer
+	
+	//Otimização para leitura do SX3
+	Private nCAMPO		AS Integer
+	Private nUSADO	    AS Integer
+	Private nARQUIVO	AS Integer
+	Private nNIVEL		AS Integer
+
+	//Parametros da rotina-------------------------------------------------------------------------
+	ParamType 0		VAR aCampos			AS Array		Optional Default NIL
+	ParamType 1		VAR cTabela			AS Character	Optional Default NIL
+	ParamType 2		VAR cFiltro			AS Character	Optional Default '.T.'
+	ParamType 3		VAR lVisual			AS Logical		Optional Default .F.
+	ParamType 4		VAR lReal			AS Logical		Optional Default .F.
+	ParamType 5		VAR nFltNv			AS Numeric		Optional Default cNivel
+	ParamType 6		VAR lSoCpo			AS Logical		Optional Default .F.
+	ParamType 7		VAR aNaoLerCmp		AS Array		Optional Default {}
+	
+	//Inicializa Variaveis-------------------------------------------------------------------------
+	aRet	:= {}
+	oArea	:= tCtrlAlias():GetArea({'SX3'})	//Salva Area
+
+	If cFiltro == '.T.'	//Sem Filtro
+		//---------------------------------------------------------------------------------------------
+		aBindParam	:= {}
+		cQuery	:= ""
+		cQuery	+= "SELECT X3_CAMPO,X3_USADO "+CRLF
+		cQuery	+= "FROM "+RetSqlTab("SX3")+" "+CRLF
+		cQuery	+= "WHERE SX3.D_E_L_E_T_ = '' "+CRLF
+		cQuery += " AND X3_CONTEXT <> ? "+CRLF
+		If lReal	//Remove registros virtuais
+			aAdd(aBindParam,'V')
+		Else
+			aAdd(aBindParam,'#')
+		EndIf
+
+		cQuery += " AND X3_VISUAL <> ? "+CRLF
+		If .Not. lVisual	//Nao considera campos somente visualizacao
+			aAdd(aBindParam,'V')
+		Else
+			aAdd(aBindParam,'#')
+		EndIf
+
+		cQuery += " AND X3_NIVEL <= ? "+CRLF
+		aAdd(aBindParam,nFltNv)
+
+		If .Not. Empty(cTabela)
+			cQuery += " AND X3_ARQUIVO = ? "+CRLF
+			aAdd(aBindParam,cTabela)
+		Else
+			cQuery += " AND X3_CAMPO IN ( ? ) "+CRLF
+			aAdd(aBindParam,aCampos)
+		EndIf
+
+		cQuery += " AND X3_CAMPO NOT IN ( ? ) "+CRLF
+		aAdd(aBindParam,aNaoLerCmp)
+		
+		cQuery	+= "ORDER BY X3_ARQUIVO,X3_ORDEM "+CRLF
+		cQuery	:= ChangeQuery(cQuery)
+
+		U_CXExecQuery(@cQry,cQuery,/*lGravaQuery*/,/*lConvCpo*/,/*cNomeFun*/,aBindParam) //Executa a query
+
+		nARQUIVO	:= (cQry)->(FieldPos('X3_ARQUIVO'))
+		nNIVEL		:= (cQry)->(FieldPos('X3_NIVEL'))
+		nCAMPO		:= (cQry)->(FieldPos('X3_CAMPO'))
+		nUSADO	    := (cQry)->(FieldPos('X3_USADO'))
+		While (cQry)->(!EoF())
+
+			AddCampo(	@aRet	,;	//01
+						cFiltro	,;	//02
+						cQry	)	//03
+
+			(cQry)->(dbSkip())
+		EndDo
+
+		(cQry)->(dbCloseArea()) //Fecha a query
+	Else		//Filtro ADVPL
+		nARQUIVO	:= SX3->(FieldPos('X3_ARQUIVO'))
+		nNIVEL		:= SX3->(FieldPos('X3_NIVEL'))	
+		nCAMPO		:= SX3->(FieldPos('X3_CAMPO'))	
+		nUSADO	    := SX3->(FieldPos('X3_USADO'))	
+
+		cFiltro	:= '('+cFiltro+')'
+
+		If lReal	//Remove registros virtuais
+			cFiltro += " .And. X3_CONTEXT <> 'V' "
+		EndIf 
+		
+		If .Not. lVisual	//Nao considera campos somente visualizacao
+			cFiltro += " .And. X3_VISUAL <> 'V' "
+		EndIf
+		
+		If .Not. Empty(cTabela)
+			SX3->(dbSetOrder(1))
+			SX3->(MsSeek(cTabela))
+			While 	SX3->(!EOF()) .And. ;
+					SX3->(FieldGet(nARQUIVO)) == cTabela
+
+				If 	SX3->(FieldGet(nNIVEL)) <= nFltNv .And. ;
+					aScan(aNaoLerCmp,{|x| AllTrim(x) == AllTrim(SX3->(FieldGet(nCAMPO))) } ) == 0
+
+					AddCampo(	@aRet	,;	//01
+								cFiltro	,;	//02
+								'SX3'	)	//03
+				EndIf
+
+				SX3->(dbSkip())
+			EndDo
+		Else
+			SX3->(dbSetOrder(2))
+			For nX := 1 to len(aCampos)
+				If SX3->(MsSeek(aCampos[nX]))
+					If 	SX3->(FieldGet(nNIVEL)) <= nFltNv
+						AddCampo(	@aRet	,;	//01
+									cFiltro	,;	//02
+									'SX3'	)	//03
+					EndIf
+				EndIf
+			Next
+		EndIf
+	EndIf
+
+	If lSoCpo
+		aEval(aRet,{|x| x := x[1] })	//Converte para elemento simples
+	EndIf
+	
+	oArea:RestArea()		//Restaura area
+	oArea:Destroy()
+	FWFreeVar(oArea)
+	
+Return aRet
+
+//-------------------------------------------------------------------------------------------------
+Static Function AddCampo(	aRet	,;	//01
+							cFiltro	,;	//02
+							cAlias	)	//03
+	
+	If	X3Uso((cAlias)->(FieldGet(nUSADO))) .And. ;
+		SX3->(&(cFiltro))
+
+		aAdd(aRet,{(cAlias)->(FieldGet(nCAMPO))})
+	EndIf
+
+Return
