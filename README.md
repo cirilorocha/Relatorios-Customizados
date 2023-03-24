@@ -20,6 +20,12 @@ A geração do relatório pode ser feita de várias formas:
 * Email
 * OU ainda chamado por algum job para gravação do PDF e posterior envio por email.
 
+Para utilizar as rotinas basta executar estes dois programas principais:
+
+* U_RCCADASTRO para a tela de manutenção/admin de relatórios
+* U_RCMENU para o acesso p/ emissão dos relatórios pelos usuários
+* U_CXRelJob para execução de relatórios via Job
+
 ## Observações
 
 * **Da forma que está atualmente talvez ainda precise de alguns retoques para funcione em qualquer ambiente, além do [CXLibCore](https://github.com/cirilorocha/CXLibCore)**
